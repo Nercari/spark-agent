@@ -12,12 +12,18 @@ from platform.learning.contracts import (
     VerificationStatus,
     MutationDecision,
     is_untrusted_origin,
+    can_evidence_authorize_learning,
 )
 from platform.learning.evidence_recorder import EvidenceRecorder
 from platform.learning.verifier import OutcomeVerifier
 from platform.learning.version_store import SkillVersionStore
 from platform.learning.reviewer import BackgroundLearningReviewer
-from platform.learning.reflection import HermesReflectionEngine, ReflectionProposal
+from platform.learning.reflection import (
+    HermesReflectionEngine,
+    ReflectionProposal,
+    DeterministicRecoveryAnalyzer,
+    HermesSemanticReflectionSubagent,
+)
 from platform.learning.commit_engine import LearningCommitEngine
 from platform.learning.backend import (
     SkillBackend,
@@ -38,11 +44,14 @@ __all__ = [
     "VerificationStatus",
     "MutationDecision",
     "is_untrusted_origin",
+    "can_evidence_authorize_learning",
     "EvidenceRecorder",
     "OutcomeVerifier",
     "SkillVersionStore",
     "BackgroundLearningReviewer",
     "HermesReflectionEngine",
+    "DeterministicRecoveryAnalyzer",
+    "HermesSemanticReflectionSubagent",
     "ReflectionProposal",
     "LearningCommitEngine",
     "SkillBackend",

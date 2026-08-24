@@ -1,4 +1,4 @@
-"""Evidence Recorder for TaskRuns and EvidenceEvents with Operational Payload Provenance."""
+"""Evidence Recorder for TaskRuns and EvidenceEvents with Operational Payload Provenance and Operation Linking."""
 
 import os
 import json
@@ -46,6 +46,9 @@ class EvidenceRecorder:
         trust_class: TrustClass,
         content: str,
         payload_origin: PayloadOrigin = PayloadOrigin.UNKNOWN_EXTERNAL,
+        operation_id: Optional[str] = None,
+        attempt_id: int = 1,
+        parent_attempt_id: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> EvidenceEvent:
         event = EvidenceEvent(
@@ -55,6 +58,9 @@ class EvidenceRecorder:
             trust_class=trust_class,
             content=content,
             payload_origin=payload_origin,
+            operation_id=operation_id,
+            attempt_id=attempt_id,
+            parent_attempt_id=parent_attempt_id,
             metadata=metadata or {},
         )
         self.events.append(event)
@@ -85,18 +91,29 @@ class EvidenceRecorder:
         is_error: bool = False,
         is_transient: bool = False,
         is_recovery: bool = False,
+        operation_id: Optional[str] = None,
+        attempt_id: int = 1,
+        parent_attempt_id: Optional[str] = None,
     ) -> EvidenceEvent:
+        op_id = operation_id or f"op_{tool_name}"
+        meta = {
+            "tool_name": tool_name,
+            "is_error": is_error,
+            "is_transient": is_transient,
+            "is_recovery": is_recovery,
+            "operation_id": op_id,
+            "attempt_id": attempt_id,
+            "parent_attempt_id": parent_attempt_id,
+        }
         return self._add_event(
             event_type=EventType.TOOL_RESULT,
             trust_class=TrustClass.INTERNAL_EXECUTION,
             payload_origin=payload_origin,
+            operation_id=op_id,
+            attempt_id=attempt_id,
+            parent_attempt_id=parent_attempt_id,
             content=json.dumps({"tool": tool_name, "params": params, "result": result}),
-            metadata={
-                "tool_name": tool_name,
-                "is_error": is_error,
-                "is_transient": is_transient,
-                "is_recovery": is_recovery,
-            },
+            metadata=meta,
         )
 
     def record_external_content(

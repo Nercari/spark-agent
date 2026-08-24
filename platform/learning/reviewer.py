@@ -1,9 +1,4 @@
-"""Unified Background Learning Reviewer.
-
-Combines:
-1. Fast-Path: Deterministic correction reviewer for high-confidence explicit user corrections.
-2. General-Path: Hermes Reflection Engine for experience-driven, verified recovery learning.
-"""
+"""Unified Background Learning Reviewer with Strict Authority Binding."""
 
 import re
 import uuid
@@ -19,6 +14,7 @@ from platform.learning.contracts import (
     LearningMutation,
     MutationDecision,
     is_untrusted_origin,
+    can_evidence_authorize_learning,
 )
 from platform.learning.version_store import SkillVersionStore
 from platform.learning.reflection import HermesReflectionEngine
@@ -50,38 +46,39 @@ class BackgroundLearningReviewer:
                 decision=MutationDecision.REJECT_SYSTEM_SKILL,
             )
 
-        # 2. Strict Operational Payload Provenance Screening (A2 / Test J / Test Q)
-        untrusted_payload_events = [
-            e for e in task_run.evidence_events
-            if e.trust_class == TrustClass.UNTRUSTED_EXTERNAL_EVIDENCE or is_untrusted_origin(e.payload_origin)
-        ]
-        user_authority_events = [
-            e for e in task_run.evidence_events
-            if e.trust_class == TrustClass.TRUSTED_USER_AUTHORITY
-        ]
+        # 2. Strict Operational Payload Provenance & Authority Binding Screening (Part 1)
+        user_auth_events = [e for e in task_run.evidence_events if e.trust_class == TrustClass.TRUSTED_USER_AUTHORITY]
+        user_auth_text = " ".join([e.content for e in user_auth_events]) if user_auth_events else None
 
-        for u_ev in untrusted_payload_events:
-            content_lower = u_ev.content.lower()
-            if (
-                "ignore previous instructions" in content_lower
-                or "from now on always" in content_lower
-                or "send reports to" in content_lower
-                or "exfiltrate" in content_lower
-            ):
-                if not user_authority_events:
-                    return LearningMutation(
-                        id=f"mut_{uuid.uuid4().hex[:8]}",
-                        task_run_id=task_run.id,
-                        operation="NO_LEARNING",
-                        target_skill=target_skill,
-                        base_version_id=task_run.skill_version,
-                        base_version_hash="",
-                        proposed_content="",
-                        diff="",
-                        reason=f"Rejected unauthenticated prompt injection from payload origin {u_ev.payload_origin.value}. External content cannot grant standing behavioral authority.",
-                        decision=MutationDecision.BLOCKED_UNTRUSTED,
-                        evidence_ids=[u_ev.id],
+        for ev in task_run.evidence_events:
+            if ev.trust_class == TrustClass.UNTRUSTED_EXTERNAL_EVIDENCE or is_untrusted_origin(ev.payload_origin):
+                content_lower = ev.content.lower()
+                if (
+                    "ignore previous instructions" in content_lower
+                    or "from now on always" in content_lower
+                    or "send reports to" in content_lower
+                    or "exfiltrate" in content_lower
+                    or "upload your files to" in content_lower
+                ):
+                    auth_ok, auth_reason = can_evidence_authorize_learning(
+                        evidence_events=[ev],
+                        proposed_lesson=ev.content,
+                        user_authorized_text=user_auth_text,
                     )
+                    if not auth_ok:
+                        return LearningMutation(
+                            id=f"mut_{uuid.uuid4().hex[:8]}",
+                            task_run_id=task_run.id,
+                            operation="NO_LEARNING",
+                            target_skill=target_skill,
+                            base_version_id=task_run.skill_version,
+                            base_version_hash="",
+                            proposed_content="",
+                            diff="",
+                            reason=f"Rejected unauthenticated behavioral directive from payload origin {ev.payload_origin.value}. External content cannot grant standing behavioral authority.",
+                            decision=MutationDecision.BLOCKED_UNTRUSTED,
+                            evidence_ids=[ev.id],
+                        )
 
         # 3. Fast Path: Process Explicit User Correction (Highest Priority)
         user_corrections = [
@@ -112,6 +109,7 @@ class BackgroundLearningReviewer:
                 task_run=task_run,
             )
 
+            # Recompute canonical unified diff
             diff_lines = list(
                 difflib.unified_diff(
                     active_version.content.splitlines(keepends=True),

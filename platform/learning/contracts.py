@@ -2,10 +2,11 @@
 
 import difflib
 import hashlib
+import re
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 
 class EventType(str, Enum):
@@ -46,6 +47,35 @@ def is_untrusted_origin(origin: PayloadOrigin) -> bool:
     }
 
 
+def can_evidence_authorize_learning(
+    evidence_events: List["EvidenceEvent"], proposed_lesson: str, user_authorized_text: Optional[str] = None
+) -> Tuple[bool, str]:
+    """Policy boundary determining whether evidence can legitimately authorize a proposed learning mutation."""
+    lesson_lower = proposed_lesson.lower()
+
+    disallowed_patterns = [
+        r"send (?:reports|data|files|emails) to [a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+",
+        r"upload (?:files|data|reports) to https?://",
+        r"exfiltrate",
+        r"grant (?:permission|access|role)",
+        r"disable (?:security|verification|check)",
+        r"ignore previous instructions",
+    ]
+    for pattern in disallowed_patterns:
+        if re.search(pattern, lesson_lower):
+            if not user_authorized_text or not re.search(pattern, user_authorized_text.lower()):
+                return False, f"Proposed lesson attempts to establish unauthorized behavioral directive or external destination: '{proposed_lesson}'"
+
+    for ev in evidence_events:
+        if ev.trust_class == TrustClass.UNTRUSTED_EXTERNAL_EVIDENCE or is_untrusted_origin(ev.payload_origin):
+            content_lower = ev.content.lower()
+            if "ignore previous instructions" in content_lower or "from now on always" in content_lower or "send reports to" in content_lower:
+                if any(kw in lesson_lower for kw in ["send reports to", "always send", "upload", "exfiltrate", "attacker"]):
+                    return False, f"Proposed lesson was derived from untrusted payload origin {ev.payload_origin.value} without user authority."
+
+    return True, "Evidence authorization validated."
+
+
 class VerificationStatus(str, Enum):
     VERIFIED_SUCCESS = "VERIFIED_SUCCESS"
     VERIFIED_FAILURE = "VERIFIED_FAILURE"
@@ -74,6 +104,9 @@ class EvidenceEvent:
     trust_class: TrustClass
     content: str
     payload_origin: PayloadOrigin = PayloadOrigin.UNKNOWN_EXTERNAL
+    operation_id: Optional[str] = None
+    attempt_id: int = 1
+    parent_attempt_id: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -92,6 +125,9 @@ class EvidenceEvent:
             trust_class=TrustClass(data["trust_class"]),
             content=data["content"],
             payload_origin=PayloadOrigin(data.get("payload_origin", PayloadOrigin.UNKNOWN_EXTERNAL.value)),
+            operation_id=data.get("operation_id"),
+            attempt_id=data.get("attempt_id", 1),
+            parent_attempt_id=data.get("parent_attempt_id"),
             metadata=data.get("metadata", {}),
         )
 
@@ -199,7 +235,7 @@ class SkillVersion:
 class LearningMutation:
     id: str
     task_run_id: str
-    operation: str  # SKILL_PATCH, NO_LEARNING, ROLLBACK
+    operation: str
     target_skill: str
     base_version_id: str
     base_version_hash: str
