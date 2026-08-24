@@ -1,4 +1,4 @@
-"""Evidence Recorder for TaskRuns and EvidenceEvents."""
+"""Evidence Recorder for TaskRuns and EvidenceEvents with Payload Provenance."""
 
 import os
 import json
@@ -10,6 +10,7 @@ from platform.learning.contracts import (
     EvidenceEvent,
     EventType,
     TrustClass,
+    PayloadOrigin,
     VerificationStatus,
 )
 
@@ -44,6 +45,7 @@ class EvidenceRecorder:
         event_type: EventType,
         trust_class: TrustClass,
         content: str,
+        payload_origin: PayloadOrigin = PayloadOrigin.LOCAL_COMPUTATION,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> EvidenceEvent:
         event = EvidenceEvent(
@@ -52,6 +54,7 @@ class EvidenceRecorder:
             event_type=event_type,
             trust_class=trust_class,
             content=content,
+            payload_origin=payload_origin,
             metadata=metadata or {},
         )
         self.events.append(event)
@@ -61,6 +64,7 @@ class EvidenceRecorder:
         return self._add_event(
             event_type=EventType.USER_AUTHORIZED_INSTRUCTION,
             trust_class=TrustClass.TRUSTED_USER_AUTHORITY,
+            payload_origin=PayloadOrigin.LOCAL_COMPUTATION,
             content=instruction,
         )
 
@@ -68,24 +72,36 @@ class EvidenceRecorder:
         return self._add_event(
             event_type=EventType.USER_CORRECTION,
             trust_class=TrustClass.TRUSTED_USER_AUTHORITY,
+            payload_origin=PayloadOrigin.LOCAL_COMPUTATION,
             content=correction,
         )
 
     def record_tool_result(
-        self, tool_name: str, params: Dict[str, Any], result: Any, is_error: bool = False, is_transient: bool = False
+        self,
+        tool_name: str,
+        params: Dict[str, Any],
+        result: Any,
+        payload_origin: PayloadOrigin = PayloadOrigin.LOCAL_COMPUTATION,
+        is_error: bool = False,
+        is_transient: bool = False,
     ) -> EvidenceEvent:
+        """Records tool execution. Note: payload_origin preserves true data provenance."""
         return self._add_event(
             event_type=EventType.TOOL_RESULT,
             trust_class=TrustClass.INTERNAL_EXECUTION,
+            payload_origin=payload_origin,
             content=json.dumps({"tool": tool_name, "params": params, "result": result}),
             metadata={"tool_name": tool_name, "is_error": is_error, "is_transient": is_transient},
         )
 
-    def record_external_content(self, source_ref: str, content: str) -> EvidenceEvent:
+    def record_external_content(
+        self, source_ref: str, content: str, origin: PayloadOrigin = PayloadOrigin.EXTERNAL_WEB
+    ) -> EvidenceEvent:
         """Records external content. Strictly labeled UNTRUSTED_EXTERNAL_EVIDENCE."""
         return self._add_event(
             event_type=EventType.EXTERNAL_CONTENT,
             trust_class=TrustClass.UNTRUSTED_EXTERNAL_EVIDENCE,
+            payload_origin=origin,
             content=content,
             metadata={"source_ref": source_ref},
         )
@@ -94,6 +110,7 @@ class EvidenceRecorder:
         return self._add_event(
             event_type=EventType.MODEL_INFERENCE,
             trust_class=TrustClass.INTERNAL_EXECUTION,
+            payload_origin=PayloadOrigin.LOCAL_COMPUTATION,
             content=thought_or_output,
         )
 
@@ -105,6 +122,7 @@ class EvidenceRecorder:
         return self._add_event(
             event_type=EventType.VERIFICATION_RESULT,
             trust_class=TrustClass.VERIFICATION,
+            payload_origin=PayloadOrigin.LOCAL_COMPUTATION,
             content=json.dumps({"status": status.value, "reason": reason, "details": details or {}}),
             metadata={"status": status.value},
         )

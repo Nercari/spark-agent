@@ -1,4 +1,9 @@
-"""Hermes-style Background Learning Reviewer."""
+"""Background Learning Reviewer (Deterministic Correction Reviewer Baseline).
+
+Note: This component currently implements a deterministic rule/regex-based correction
+reviewer for high-confidence procedural patches. Generalized LLM-driven reflection
+will be layered on top in subsequent milestones.
+"""
 
 import re
 import uuid
@@ -17,6 +22,8 @@ from platform.learning.version_store import SkillVersionStore
 
 
 class BackgroundLearningReviewer:
+    """Deterministic correction-learning reviewer for procedural skill updates."""
+
     def __init__(self, version_store: SkillVersionStore):
         self.version_store = version_store
 

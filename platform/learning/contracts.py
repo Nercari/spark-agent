@@ -23,6 +23,16 @@ class TrustClass(str, Enum):
     VERIFICATION = "VERIFICATION"
 
 
+class PayloadOrigin(str, Enum):
+    LOCAL_COMPUTATION = "LOCAL_COMPUTATION"
+    EXTERNAL_WEB = "EXTERNAL_WEB"
+    EMAIL = "EMAIL"
+    DOCUMENT = "DOCUMENT"
+    MCP = "MCP"
+    CONNECTED_APP = "CONNECTED_APP"
+    UNKNOWN_EXTERNAL = "UNKNOWN_EXTERNAL"
+
+
 class VerificationStatus(str, Enum):
     VERIFIED_SUCCESS = "VERIFIED_SUCCESS"
     VERIFIED_FAILURE = "VERIFIED_FAILURE"
@@ -50,12 +60,14 @@ class EvidenceEvent:
     event_type: EventType
     trust_class: TrustClass
     content: str
+    payload_origin: PayloadOrigin = PayloadOrigin.LOCAL_COMPUTATION
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
         d["event_type"] = self.event_type.value
         d["trust_class"] = self.trust_class.value
+        d["payload_origin"] = self.payload_origin.value
         return d
 
     @classmethod
@@ -66,6 +78,7 @@ class EvidenceEvent:
             event_type=EventType(data["event_type"]),
             trust_class=TrustClass(data["trust_class"]),
             content=data["content"],
+            payload_origin=PayloadOrigin(data.get("payload_origin", PayloadOrigin.LOCAL_COMPUTATION.value)),
             metadata=data.get("metadata", {}),
         )
 

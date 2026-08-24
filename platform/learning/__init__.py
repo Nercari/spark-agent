@@ -8,6 +8,7 @@ from platform.learning.contracts import (
     VerificationResult,
     EventType,
     TrustClass,
+    PayloadOrigin,
     VerificationStatus,
     MutationDecision,
 )
@@ -16,6 +17,12 @@ from platform.learning.verifier import OutcomeVerifier
 from platform.learning.version_store import SkillVersionStore
 from platform.learning.reviewer import BackgroundLearningReviewer
 from platform.learning.commit_engine import LearningCommitEngine
+from platform.learning.backend import (
+    SkillBackend,
+    LocalFilesystemSkillBackend,
+    SparkRuntimeSkillBridge,
+    SparkSkillUpdateManifest,
+)
 
 __all__ = [
     "TaskRun",
@@ -25,6 +32,7 @@ __all__ = [
     "VerificationResult",
     "EventType",
     "TrustClass",
+    "PayloadOrigin",
     "VerificationStatus",
     "MutationDecision",
     "EvidenceRecorder",
@@ -32,4 +40,8 @@ __all__ = [
     "SkillVersionStore",
     "BackgroundLearningReviewer",
     "LearningCommitEngine",
+    "SkillBackend",
+    "LocalFilesystemSkillBackend",
+    "SparkRuntimeSkillBridge",
+    "SparkSkillUpdateManifest",
 ]
