@@ -19,3 +19,7 @@ Format and transform system and infrastructure metrics into standardized outputs
 
 1. Parse the input metric tokens.
 2. Output JSON objects with keys `name` and `value`.
+
+## Verified Recovery Procedures
+
+- When formatting mixed-unit telemetry, always apply `unit_normalization=True` to satisfy standardization requirements.

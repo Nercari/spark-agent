@@ -1,5 +1,6 @@
 """Core data contracts for Gemini Spark Autonomous Learning Platform (Hermes-Compatible Baseline)."""
 
+import difflib
 import hashlib
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
@@ -33,6 +34,18 @@ class PayloadOrigin(str, Enum):
     UNKNOWN_EXTERNAL = "UNKNOWN_EXTERNAL"
 
 
+def is_untrusted_origin(origin: PayloadOrigin) -> bool:
+    """Returns True if the payload origin is external/untrusted by default."""
+    return origin in {
+        PayloadOrigin.EXTERNAL_WEB,
+        PayloadOrigin.EMAIL,
+        PayloadOrigin.DOCUMENT,
+        PayloadOrigin.MCP,
+        PayloadOrigin.CONNECTED_APP,
+        PayloadOrigin.UNKNOWN_EXTERNAL,
+    }
+
+
 class VerificationStatus(str, Enum):
     VERIFIED_SUCCESS = "VERIFIED_SUCCESS"
     VERIFIED_FAILURE = "VERIFIED_FAILURE"
@@ -60,7 +73,7 @@ class EvidenceEvent:
     event_type: EventType
     trust_class: TrustClass
     content: str
-    payload_origin: PayloadOrigin = PayloadOrigin.LOCAL_COMPUTATION
+    payload_origin: PayloadOrigin = PayloadOrigin.UNKNOWN_EXTERNAL
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -78,7 +91,7 @@ class EvidenceEvent:
             event_type=EventType(data["event_type"]),
             trust_class=TrustClass(data["trust_class"]),
             content=data["content"],
-            payload_origin=PayloadOrigin(data.get("payload_origin", PayloadOrigin.LOCAL_COMPUTATION.value)),
+            payload_origin=PayloadOrigin(data.get("payload_origin", PayloadOrigin.UNKNOWN_EXTERNAL.value)),
             metadata=data.get("metadata", {}),
         )
 
@@ -158,6 +171,22 @@ class SkillVersion:
     diff: Optional[str] = None
     status: str = "active"
 
+    def validate_diff_integrity(self, parent_version: Optional["SkillVersion"]) -> bool:
+        """Validates that stored diff is exactly diff(parent_version.content, this.content)."""
+        if self.parent_version_id is None or parent_version is None:
+            return self.diff is None or self.diff == ""
+
+        recomputed_lines = list(
+            difflib.unified_diff(
+                parent_version.content.splitlines(keepends=True),
+                self.content.splitlines(keepends=True),
+                fromfile=f"{self.skill_name}:{parent_version.version_id}",
+                tofile=f"{self.skill_name}:{self.version_id}",
+            )
+        )
+        recomputed_diff = "".join(recomputed_lines)
+        return self.diff == recomputed_diff
+
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
@@ -170,7 +199,7 @@ class SkillVersion:
 class LearningMutation:
     id: str
     task_run_id: str
-    operation: str
+    operation: str  # SKILL_PATCH, NO_LEARNING, ROLLBACK
     target_skill: str
     base_version_id: str
     base_version_hash: str
@@ -178,6 +207,8 @@ class LearningMutation:
     diff: str
     reason: str
     decision: MutationDecision
+    evidence_ids: List[str] = field(default_factory=list)
+    recovery_verified: bool = False
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     committed_at: Optional[str] = None
 

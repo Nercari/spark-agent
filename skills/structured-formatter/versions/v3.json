@@ -2,11 +2,11 @@
   "version_id": "v3",
   "skill_name": "user:structured-formatter",
   "parent_version_id": "v2",
-  "content": "CORRUPTED",
-  "content_hash": "eb256be44d9f10f443b7be50d9959e1bb9d2919d7b415a774659b8beec4608c0",
-  "created_at": "2026-08-24T19:08:41.471900+00:00",
-  "created_from_task_run_id": null,
-  "change_reason": "Simulated regression",
-  "diff": "@@ -1,13 +1 @@\n-----\n-name: structured-formatter\n-description: Formats incoming server and system metrics for reporting.\n----\n-# Structured Formatter\n-\n-## When to Use\n-- When converting raw metrics into reports.\n-\n-## Output Format\n-- Output format: ALWAYS output strict JSON with keys name, value. Do not output raw plain text or key-value colon lines.\n-\n-## Steps\n-1. Parse the input metrics.\n-2. Output lines as Field: Value.\n+CORRUPTED\n\\ No newline at end of file\n",
-  "status": "rolled_back"
+  "content": "---\nname: structured-formatter\ndescription: Formats incoming server, hardware, and system metrics for structured reporting. Use when converting raw telemetry strings or system metrics into standardized outputs.\n---\n# Structured Formatter\n\nFormat and transform system and infrastructure metrics into standardized outputs.\n\n## When to Use\n\n- When parsing and converting server metrics (CPU, memory, disk, network) into reports.\n- When generating structured data outputs from raw telemetry strings.\n\n## Output Format\n\n- Output format: ALWAYS output strict JSON with keys name, value. Do not output raw plain text or key-value colon lines.\n\n## Steps\n\n1. Parse the input metric tokens.\n2. Output JSON objects with keys `name` and `value`.\n\n## Verified Recovery Procedures\n\n- When formatting mixed-unit telemetry, always apply `unit_normalization=True` to satisfy standardization requirements.\n",
+  "content_hash": "b2c01991873b43db06399ba7c44ea1d5bf59816cb6f7d028448ec6222b406e22",
+  "created_at": "2026-08-24T19:59:34.000000+00:00",
+  "created_from_task_run_id": "task_recovery_tracer_1",
+  "change_reason": "Learned from verified recovery: applied unit_normalization=True for mixed-unit telemetry standardization.",
+  "diff": "--- user:structured-formatter:v2\n+++ user:structured-formatter:v3\n@@ -20,2 +20,6 @@\n 2. Output JSON objects with keys `name` and `value`.\n+\n+## Verified Recovery Procedures\n+\n+- When formatting mixed-unit telemetry, always apply `unit_normalization=True` to satisfy standardization requirements.\n",
+  "status": "active"
 }

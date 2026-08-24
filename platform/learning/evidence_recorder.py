@@ -1,4 +1,4 @@
-"""Evidence Recorder for TaskRuns and EvidenceEvents with Payload Provenance."""
+"""Evidence Recorder for TaskRuns and EvidenceEvents with Operational Payload Provenance."""
 
 import os
 import json
@@ -45,7 +45,7 @@ class EvidenceRecorder:
         event_type: EventType,
         trust_class: TrustClass,
         content: str,
-        payload_origin: PayloadOrigin = PayloadOrigin.LOCAL_COMPUTATION,
+        payload_origin: PayloadOrigin = PayloadOrigin.UNKNOWN_EXTERNAL,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> EvidenceEvent:
         event = EvidenceEvent(
@@ -81,23 +81,27 @@ class EvidenceRecorder:
         tool_name: str,
         params: Dict[str, Any],
         result: Any,
-        payload_origin: PayloadOrigin = PayloadOrigin.LOCAL_COMPUTATION,
+        payload_origin: PayloadOrigin = PayloadOrigin.UNKNOWN_EXTERNAL,
         is_error: bool = False,
         is_transient: bool = False,
+        is_recovery: bool = False,
     ) -> EvidenceEvent:
-        """Records tool execution. Note: payload_origin preserves true data provenance."""
         return self._add_event(
             event_type=EventType.TOOL_RESULT,
             trust_class=TrustClass.INTERNAL_EXECUTION,
             payload_origin=payload_origin,
             content=json.dumps({"tool": tool_name, "params": params, "result": result}),
-            metadata={"tool_name": tool_name, "is_error": is_error, "is_transient": is_transient},
+            metadata={
+                "tool_name": tool_name,
+                "is_error": is_error,
+                "is_transient": is_transient,
+                "is_recovery": is_recovery,
+            },
         )
 
     def record_external_content(
         self, source_ref: str, content: str, origin: PayloadOrigin = PayloadOrigin.EXTERNAL_WEB
     ) -> EvidenceEvent:
-        """Records external content. Strictly labeled UNTRUSTED_EXTERNAL_EVIDENCE."""
         return self._add_event(
             event_type=EventType.EXTERNAL_CONTENT,
             trust_class=TrustClass.UNTRUSTED_EXTERNAL_EVIDENCE,

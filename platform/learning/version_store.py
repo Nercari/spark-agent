@@ -1,4 +1,4 @@
-"""Immutable Skill Version Store and Rollback Management."""
+"""Immutable Skill Version Store with Strict Diff Integrity and Rollback Management."""
 
 import os
 import json
@@ -39,6 +39,7 @@ class SkillVersionStore:
             content=initial_content,
             content_hash=generate_sha256(initial_content),
             created_at=datetime.now(timezone.utc).isoformat(),
+            created_from_task_run_id=None,
             change_reason=change_reason,
             diff=None,
             status="active",
@@ -89,7 +90,7 @@ class SkillVersionStore:
         change_reason: str,
         created_from_task_run_id: Optional[str] = None,
     ) -> Tuple[bool, str, Optional[SkillVersion]]:
-        """Creates a new version following read-before-write validation."""
+        """Creates a new version following read-before-write validation and canonical diff computation."""
         active = self.get_active_version(skill_name)
         if not active:
             return False, f"Skill '{skill_name}' does not exist.", None
@@ -105,6 +106,7 @@ class SkillVersionStore:
         current_num = int(active.version_id.lstrip("v")) if active.version_id.startswith("v") else 1
         new_version_id = f"v{current_num + 1}"
 
+        # Canonical unified diff recomputation
         diff_lines = list(
             difflib.unified_diff(
                 active.content.splitlines(keepends=True),
@@ -127,6 +129,9 @@ class SkillVersionStore:
             diff=diff_str,
             status="active",
         )
+
+        if not new_version.validate_diff_integrity(active):
+            return False, "Diff integrity validation failed: computed diff does not match version content.", None
 
         active.status = "superseded"
         self._save_version_record(active)
@@ -175,6 +180,27 @@ class SkillVersionStore:
             history=meta.get("history", []),
         )
         return True, f"Successfully rolled back to {target_version_id}.", target_version
+
+    def validate_all_versions_diff_integrity(self, skill_name: str) -> Tuple[bool, List[str]]:
+        """Validates that every historical version of a skill has canonical diff integrity."""
+        meta = self._read_metadata(skill_name)
+        history = meta.get("history", [])
+        errors = []
+
+        for vid in history:
+            ver = self.get_version(skill_name, vid)
+            if not ver:
+                errors.append(f"Version {vid} missing from store.")
+                continue
+            if ver.parent_version_id:
+                parent = self.get_version(skill_name, ver.parent_version_id)
+                if not parent:
+                    errors.append(f"Parent version {ver.parent_version_id} missing for {vid}.")
+                    continue
+                if not ver.validate_diff_integrity(parent):
+                    errors.append(f"Diff mismatch on version {vid} against parent {ver.parent_version_id}.")
+
+        return len(errors) == 0, errors
 
     def _save_version_record(self, version: SkillVersion):
         v_path = os.path.join(self._get_versions_dir(version.skill_name), f"{version.version_id}.json")

@@ -11,11 +11,13 @@ from platform.learning.contracts import (
     PayloadOrigin,
     VerificationStatus,
     MutationDecision,
+    is_untrusted_origin,
 )
 from platform.learning.evidence_recorder import EvidenceRecorder
 from platform.learning.verifier import OutcomeVerifier
 from platform.learning.version_store import SkillVersionStore
 from platform.learning.reviewer import BackgroundLearningReviewer
+from platform.learning.reflection import HermesReflectionEngine, ReflectionProposal
 from platform.learning.commit_engine import LearningCommitEngine
 from platform.learning.backend import (
     SkillBackend,
@@ -35,10 +37,13 @@ __all__ = [
     "PayloadOrigin",
     "VerificationStatus",
     "MutationDecision",
+    "is_untrusted_origin",
     "EvidenceRecorder",
     "OutcomeVerifier",
     "SkillVersionStore",
     "BackgroundLearningReviewer",
+    "HermesReflectionEngine",
+    "ReflectionProposal",
     "LearningCommitEngine",
     "SkillBackend",
     "LocalFilesystemSkillBackend",

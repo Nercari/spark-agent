@@ -1,4 +1,4 @@
-"""Skill Backend & Runtime Bridge Interface."""
+"""Skill Backend & Runtime Bridge Interface with TaskRun Provenance & Stale-Write Protection."""
 
 import abc
 import os
@@ -21,6 +21,7 @@ class SparkSkillUpdateManifest:
     proposed_content: str
     diff: str
     change_reason: str
+    task_run_id: Optional[str] = None
     tool_name: str = "skills:update_skill"
     tool_args: Dict[str, Any] = None
 
@@ -116,8 +117,24 @@ class SparkRuntimeSkillBridge:
             proposed_content=proposed_content,
             diff=diff_str,
             change_reason=change_reason,
+            task_run_id=task_run_id,
         )
         return True, "Manifest prepared successfully.", manifest
+
+    def verify_pre_write_state(
+        self,
+        manifest: SparkSkillUpdateManifest,
+        current_authoritative_content: str,
+    ) -> Tuple[bool, str]:
+        """Validates that the remote authoritative skill content has not drifted prior to write."""
+        current_hash = generate_sha256(current_authoritative_content)
+        if current_hash != manifest.base_version_hash:
+            return (
+                False,
+                f"Authoritative pre-write stale-write detected: Manifest was generated against "
+                f"hash {manifest.base_version_hash[:8]}, but remote skill is currently {current_hash[:8]}.",
+            )
+        return True, "Pre-write check passed."
 
     def record_authoritative_commit(
         self,
@@ -139,5 +156,43 @@ class SparkRuntimeSkillBridge:
             base_version_hash=manifest.base_version_hash,
             new_content=post_update_content,
             change_reason=manifest.change_reason,
+            created_from_task_run_id=manifest.task_run_id,
         )
         return success, msg, new_version
+
+    def prepare_rollback_manifest(
+        self,
+        skill_name: str,
+        target_version_id: str,
+        reason: str,
+    ) -> Tuple[bool, str, Optional[SparkSkillUpdateManifest]]:
+        """Prepares a rollback manifest to restore a previous authoritative version."""
+        target_version = self.version_store.get_version(skill_name, target_version_id)
+        if not target_version:
+            return False, f"Target rollback version '{target_version_id}' not found.", None
+
+        active_version = self.version_store.get_active_version(skill_name)
+        if not active_version:
+            return False, f"Active version not found for '{skill_name}'.", None
+
+        diff_lines = list(
+            difflib.unified_diff(
+                active_version.content.splitlines(keepends=True),
+                target_version.content.splitlines(keepends=True),
+                fromfile=f"{skill_name}:{active_version.version_id}",
+                tofile=f"{skill_name}:{target_version.version_id}_restored",
+            )
+        )
+        diff_str = "".join(diff_lines)
+
+        manifest = SparkSkillUpdateManifest(
+            skill_name=skill_name,
+            base_version_id=active_version.version_id,
+            base_version_hash=active_version.content_hash,
+            new_version_id=f"{target_version.version_id}_restored",
+            new_version_hash=target_version.content_hash,
+            proposed_content=target_version.content,
+            diff=diff_str,
+            change_reason=f"Rollback to {target_version_id}: {reason}",
+        )
+        return True, "Rollback manifest prepared.", manifest
