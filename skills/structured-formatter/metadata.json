@@ -1,11 +1,12 @@
 {
   "skill_name": "user:structured-formatter",
-  "active_version_id": "v3",
-  "active_version_hash": "b2c01991873b43db06399ba7c44ea1d5bf59816cb6f7d028448ec6222b406e22",
-  "updated_at": "2026-08-24T19:59:34.000000+00:00",
+  "active_version_id": "v4",
+  "active_version_hash": "62dbf28e67a07c08795777bb5059d007c6f09320e854d92ee436b7975ff57a90",
+  "updated_at": "2026-08-24T20:19:39.000000+00:00",
   "history": [
     "v1",
     "v2",
-    "v3"
+    "v3",
+    "v4"
   ]
 }

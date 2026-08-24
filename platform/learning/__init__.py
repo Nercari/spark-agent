@@ -11,6 +11,8 @@ from platform.learning.contracts import (
     PayloadOrigin,
     VerificationStatus,
     MutationDecision,
+    ReflectionContext,
+    ReflectionProposal,
     is_untrusted_origin,
     can_evidence_authorize_learning,
 )
@@ -20,9 +22,12 @@ from platform.learning.version_store import SkillVersionStore
 from platform.learning.reviewer import BackgroundLearningReviewer
 from platform.learning.reflection import (
     HermesReflectionEngine,
-    ReflectionProposal,
     DeterministicRecoveryAnalyzer,
     HermesSemanticReflectionSubagent,
+    ReflectionAgentBackend,
+    MockReflectionAgentBackend,
+    DirectSubagentReflectionBackend,
+    SubagentReflectionParser,
 )
 from platform.learning.commit_engine import LearningCommitEngine
 from platform.learning.backend import (
@@ -43,6 +48,8 @@ __all__ = [
     "PayloadOrigin",
     "VerificationStatus",
     "MutationDecision",
+    "ReflectionContext",
+    "ReflectionProposal",
     "is_untrusted_origin",
     "can_evidence_authorize_learning",
     "EvidenceRecorder",
@@ -52,7 +59,10 @@ __all__ = [
     "HermesReflectionEngine",
     "DeterministicRecoveryAnalyzer",
     "HermesSemanticReflectionSubagent",
-    "ReflectionProposal",
+    "ReflectionAgentBackend",
+    "MockReflectionAgentBackend",
+    "DirectSubagentReflectionBackend",
+    "SubagentReflectionParser",
     "LearningCommitEngine",
     "SkillBackend",
     "LocalFilesystemSkillBackend",

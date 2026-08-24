@@ -2,11 +2,11 @@
   "version_id": "v4",
   "skill_name": "user:structured-formatter",
   "parent_version_id": "v3",
-  "content": "CORRUPTED",
-  "content_hash": "eb256be44d9f10f443b7be50d9959e1bb9d2919d7b415a774659b8beec4608c0",
-  "created_at": "2026-08-24T19:08:41.471900+00:00",
-  "created_from_task_run_id": null,
-  "change_reason": "Simulated regression",
-  "diff": "@@ -1,13 +1 @@\n-----\n-name: structured-formatter\n-description: Formats incoming server and system metrics for reporting.\n----\n-# Structured Formatter\n-\n-## When to Use\n-- When converting raw metrics into reports.\n-\n-## Output Format\n-- Output format: ALWAYS output strict JSON with keys name, value. Do not output raw plain text or key-value colon lines.\n-\n-## Steps\n-1. Parse the input metrics.\n-2. Output lines as Field: Value.\n+CORRUPTED\n\\ No newline at end of file\n",
-  "status": "rolled_back"
+  "content": "---\nname: structured-formatter\ndescription: Formats incoming server, hardware, and system metrics for structured reporting. Use when converting raw telemetry strings or system metrics into standardized outputs.\n---\n# Structured Formatter\n\nFormat and transform system and infrastructure metrics into standardized outputs.\n\n## When to Use\n\n- When parsing and converting server metrics (CPU, memory, disk, network) into reports.\n- When generating structured data outputs from raw telemetry strings.\n\n## Output Format\n\n- Output format: ALWAYS output strict JSON with keys name, value. Do not output raw plain text or key-value colon lines.\n\n## Steps\n\n1. Parse the input metric tokens.\n2. Output JSON objects with keys `name` and `value`.\n\n## Verified Recovery Procedures\n\n- When formatting mixed-unit telemetry, always apply `unit_normalization=True` to satisfy standardization requirements.\n- When parsing batch telemetry streams, validate and normalize header schemas (`validate_headers=true`) before generating standard JSON objects.\n",
+  "content_hash": "62dbf28e67a07c08795777bb5059d007c6f09320e854d92ee436b7975ff57a90",
+  "created_at": "2026-08-24T20:19:39.000000+00:00",
+  "created_from_task_run_id": "task_rec_batch_001",
+  "change_reason": "Learned from semantic reflection subagent: validate and normalize header schemas (validate_headers=true) for batch streams.",
+  "diff": "--- user:structured-formatter:v3\n+++ user:structured-formatter:v4\n@@ -25,2 +25,3 @@\n - When formatting mixed-unit telemetry, always apply `unit_normalization=True` to satisfy standardization requirements.\n+- When parsing batch telemetry streams, validate and normalize header schemas (`validate_headers=true`) before generating standard JSON objects.\n",
+  "status": "active"
 }

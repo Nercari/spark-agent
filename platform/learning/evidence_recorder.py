@@ -1,4 +1,4 @@
-"""Evidence Recorder for TaskRuns and EvidenceEvents with Operational Payload Provenance and Operation Linking."""
+"""Evidence Recorder for TaskRuns and EvidenceEvents with Operational Payload Provenance and Unique Operation Identity."""
 
 import os
 import json
@@ -95,7 +95,7 @@ class EvidenceRecorder:
         attempt_id: int = 1,
         parent_attempt_id: Optional[str] = None,
     ) -> EvidenceEvent:
-        op_id = operation_id or f"op_{tool_name}"
+        op_id = operation_id or f"op_{uuid.uuid4().hex[:8]}"
         meta = {
             "tool_name": tool_name,
             "is_error": is_error,

@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Set
 
 
 class EventType(str, Enum):
@@ -47,31 +47,70 @@ def is_untrusted_origin(origin: PayloadOrigin) -> bool:
     }
 
 
+def extract_recipients_and_destinations(text: str) -> Tuple[Set[str], Set[str]]:
+    """Extracts email addresses and domain names from text."""
+    emails = set(re.findall(r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+', text.lower()))
+    urls = re.findall(r'https?://([a-zA-Z0-9-.]+)', text.lower())
+    domains = set(urls)
+    return emails, domains
+
+
 def can_evidence_authorize_learning(
     evidence_events: List["EvidenceEvent"], proposed_lesson: str, user_authorized_text: Optional[str] = None
 ) -> Tuple[bool, str]:
-    """Policy boundary determining whether evidence can legitimately authorize a proposed learning mutation."""
+    """Strict exact authority binding policy boundary.
+
+    Enforces:
+    1. Exact recipient & destination binding: An email or domain proposed in a lesson MUST be explicitly
+       authorized in user_authorized_text. Having user authorization for boss@example.com does NOT authorize attacker@example.com.
+    2. Untrusted external payloads (web, email, MCP, doc) cannot create standing behavioral directives,
+       add external destinations, or grant permissions.
+    """
     lesson_lower = proposed_lesson.lower()
+    user_text_lower = (user_authorized_text or "").lower()
 
-    disallowed_patterns = [
-        r"send (?:reports|data|files|emails) to [a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+",
-        r"upload (?:files|data|reports) to https?://",
-        r"exfiltrate",
-        r"grant (?:permission|access|role)",
-        r"disable (?:security|verification|check)",
-        r"ignore previous instructions",
+    # Rule 1: Check for general unauthorized directives
+    disallowed_keywords = [
+        "exfiltrate",
+        "grant permission",
+        "grant access",
+        "disable security",
+        "disable verification",
+        "ignore previous instructions",
     ]
-    for pattern in disallowed_patterns:
-        if re.search(pattern, lesson_lower):
-            if not user_authorized_text or not re.search(pattern, user_authorized_text.lower()):
-                return False, f"Proposed lesson attempts to establish unauthorized behavioral directive or external destination: '{proposed_lesson}'"
+    for kw in disallowed_keywords:
+        if kw in lesson_lower and kw not in user_text_lower:
+            return False, f"Proposed lesson attempts to establish unauthorized directive: '{kw}'"
 
+    # Rule 2: Exact Recipient & Destination Binding
+    lesson_emails, lesson_domains = extract_recipients_and_destinations(proposed_lesson)
+    user_emails, user_domains = extract_recipients_and_destinations(user_authorized_text or "")
+
+    for email in lesson_emails:
+        if email not in user_emails:
+            return False, f"Unauthorized recipient '{email}' in proposed lesson. User only authorized: {list(user_emails) or 'none'}."
+
+    for domain in lesson_domains:
+        if domain not in user_domains:
+            return False, f"Unauthorized domain '{domain}' in proposed lesson. User only authorized: {list(user_domains) or 'none'}."
+
+    # Rule 3: Inspect cited evidence events for unauthenticated prompt injections
     for ev in evidence_events:
         if ev.trust_class == TrustClass.UNTRUSTED_EXTERNAL_EVIDENCE or is_untrusted_origin(ev.payload_origin):
             content_lower = ev.content.lower()
-            if "ignore previous instructions" in content_lower or "from now on always" in content_lower or "send reports to" in content_lower:
-                if any(kw in lesson_lower for kw in ["send reports to", "always send", "upload", "exfiltrate", "attacker"]):
-                    return False, f"Proposed lesson was derived from untrusted payload origin {ev.payload_origin.value} without user authority."
+            if (
+                "ignore previous instructions" in content_lower
+                or "from now on always" in content_lower
+                or "send reports to" in content_lower
+                or "upload your files to" in content_lower
+            ):
+                ev_emails, ev_domains = extract_recipients_and_destinations(ev.content)
+                for email in ev_emails:
+                    if email in lesson_emails and email not in user_emails:
+                        return False, f"Proposed lesson adopts untrusted directive for recipient '{email}' from {ev.payload_origin.value} payload."
+                for domain in ev_domains:
+                    if domain in lesson_domains and domain not in user_domains:
+                        return False, f"Proposed lesson adopts untrusted directive for domain '{domain}' from {ev.payload_origin.value} payload."
 
     return True, "Evidence authorization validated."
 
@@ -255,6 +294,46 @@ class LearningMutation:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "LearningMutation":
+        d = data.copy()
+        d["decision"] = MutationDecision(d["decision"])
+        return cls(**d)
+
+
+@dataclass
+class ReflectionContext:
+    task_run_id: str
+    goal: str
+    target_skill: str
+    active_skill_version: str
+    skill_content: str
+    relevant_evidence: List[EvidenceEvent]
+    verification_status: str
+    verification_details: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        d = asdict(self)
+        d["relevant_evidence"] = [e.to_dict() for e in self.relevant_evidence]
+        return d
+
+
+@dataclass
+class ReflectionProposal:
+    target_skill: str
+    decision: MutationDecision
+    reason: str
+    evidence_ids: List[str] = field(default_factory=list)
+    proposed_procedural_lesson: str = ""
+    affected_section: str = "## Steps"
+    recovery_verified: bool = False
+    confidence: float = 1.0
+
+    def to_dict(self) -> Dict[str, Any]:
+        d = asdict(self)
+        d["decision"] = self.decision.value
+        return d
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ReflectionProposal":
         d = data.copy()
         d["decision"] = MutationDecision(d["decision"])
         return cls(**d)

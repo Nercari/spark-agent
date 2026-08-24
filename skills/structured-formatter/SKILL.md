@@ -23,3 +23,4 @@ Format and transform system and infrastructure metrics into standardized outputs
 ## Verified Recovery Procedures
 
 - When formatting mixed-unit telemetry, always apply `unit_normalization=True` to satisfy standardization requirements.
+- When parsing batch telemetry streams, validate and normalize header schemas (`validate_headers=true`) before generating standard JSON objects.
