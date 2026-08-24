@@ -1,0 +1,43 @@
+{
+  "id": "task_9c2ebe82",
+  "goal": "Format server metrics",
+  "started_at": "2026-08-24T19:08:41.235507+00:00",
+  "completed_at": "2026-08-24T19:08:41.261481+00:00",
+  "user_scope_id": "default_user",
+  "project_scope_id": "default_project",
+  "skill_name": "user:structured-formatter",
+  "skill_version": "v2",
+  "evidence_events": [
+    {
+      "id": "ev_1_cf3c1d",
+      "timestamp": "2026-08-24T19:08:41.261085+00:00",
+      "event_type": "USER_AUTHORIZED_INSTRUCTION",
+      "trust_class": "TRUSTED_USER_AUTHORITY",
+      "content": "Format server stats: CPU: 85%, Memory: 60%",
+      "metadata": {}
+    },
+    {
+      "id": "ev_2_10816f",
+      "timestamp": "2026-08-24T19:08:41.261173+00:00",
+      "event_type": "USER_CORRECTION",
+      "trust_class": "TRUSTED_USER_AUTHORITY",
+      "content": "For this workflow always output JSON with keys 'name' and 'value'.",
+      "metadata": {}
+    },
+    {
+      "id": "ev_3_473a21",
+      "timestamp": "2026-08-24T19:08:41.261399+00:00",
+      "event_type": "VERIFICATION_RESULT",
+      "trust_class": "VERIFICATION",
+      "content": "{\"status\": \"VERIFIED_FAILURE\", \"reason\": \"Output is not valid JSON: Expecting value: line 1 column 1 (char 0)\", \"details\": {}}",
+      "metadata": {
+        "status": "VERIFIED_FAILURE"
+      }
+    }
+  ],
+  "final_output": "CPU: 85%\nMemory: 60%",
+  "verification_status": "VERIFIED_FAILURE",
+  "verification_details": {
+    "reason": "Output is not valid JSON: Expecting value: line 1 column 1 (char 0)"
+  }
+}

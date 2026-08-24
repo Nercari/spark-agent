@@ -1,0 +1,11 @@
+{
+  "skill_name": "user:structured-formatter",
+  "active_version_id": "v2",
+  "active_version_hash": "2ff1a819b1616228ea1ea1b20c9ea427ea4ce985f543e49e29a91012abfc5577",
+  "updated_at": "2026-08-24T19:08:41.472719+00:00",
+  "history": [
+    "v1",
+    "v2",
+    "v3"
+  ]
+}

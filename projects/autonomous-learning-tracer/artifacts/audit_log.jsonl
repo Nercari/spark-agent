@@ -1,0 +1,2 @@
+{"mutation_id": "mut_dd2e4f89", "task_run_id": "task_9c2ebe82", "skill_name": "user:structured-formatter", "operation": "SKILL_PATCH", "status": "AUTO_COMMITTED", "details": "Successfully activated version v3", "diff": "", "timestamp": "2026-08-24T19:08:41.385000+00:00"}
+{"action": "ROLLBACK", "skill_name": "user:structured-formatter", "restored_version": "v2", "reason": "Verification failure on v3: Output is not valid JSON: Expecting value: line 1 column 1 (char 0)", "timestamp": "2026-08-24T19:08:41.472776+00:00"}

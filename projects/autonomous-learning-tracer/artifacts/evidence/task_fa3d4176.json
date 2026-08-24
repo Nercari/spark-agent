@@ -1,0 +1,35 @@
+{
+  "id": "task_fa3d4176",
+  "goal": "Format server metrics",
+  "started_at": "2026-08-24T19:08:41.473150+00:00",
+  "completed_at": "2026-08-24T19:08:41.473940+00:00",
+  "user_scope_id": "default_user",
+  "project_scope_id": "default_project",
+  "skill_name": "user:structured-formatter",
+  "skill_version": "v3",
+  "evidence_events": [
+    {
+      "id": "ev_1_5dc4e3",
+      "timestamp": "2026-08-24T19:08:41.473720+00:00",
+      "event_type": "USER_AUTHORIZED_INSTRUCTION",
+      "trust_class": "TRUSTED_USER_AUTHORITY",
+      "content": "Format metrics: Disk: 40%, Net: 100MB",
+      "metadata": {}
+    },
+    {
+      "id": "ev_2_e0c1f5",
+      "timestamp": "2026-08-24T19:08:41.473855+00:00",
+      "event_type": "VERIFICATION_RESULT",
+      "trust_class": "VERIFICATION",
+      "content": "{\"status\": \"VERIFIED_SUCCESS\", \"reason\": \"Output matches required JSON schema and keys.\", \"details\": {}}",
+      "metadata": {
+        "status": "VERIFIED_SUCCESS"
+      }
+    }
+  ],
+  "final_output": "[\n  {\"name\": \"Disk\", \"value\": \"40%\"},\n  {\"name\": \"Net\", \"value\": \"100MB\"}\n]",
+  "verification_status": "VERIFIED_SUCCESS",
+  "verification_details": {
+    "reason": "Output matches required JSON schema and keys."
+  }
+}
