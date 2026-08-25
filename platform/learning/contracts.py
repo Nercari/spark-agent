@@ -126,7 +126,7 @@ class VerificationStatus(str, Enum):
 
 
 class ReflectionDecision(str, Enum):
-    """Proposals that a reflection subagent can emit (model cannot emit AUTO_COMMIT)."""
+    """Semantic proposals that a reflection subagent can emit."""
     NO_LEARNING = "NO_LEARNING"
     SKILL_PATCH = "SKILL_PATCH"
     MEMORY_CREATE = "MEMORY_CREATE"
@@ -381,8 +381,8 @@ class SubagentAuditRecord:
 @dataclass
 class ReflectionProposal:
     target_skill: str
-    decision: MutationDecision
-    reason: str
+    decision: ReflectionDecision = ReflectionDecision.NO_LEARNING
+    reason: str = ""
     evidence_ids: List[str] = field(default_factory=list)
     proposed_procedural_lesson: str = ""
     affected_section: str = "## Steps"
@@ -397,5 +397,5 @@ class ReflectionProposal:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ReflectionProposal":
         d = data.copy()
-        d["decision"] = MutationDecision(d["decision"])
+        d["decision"] = ReflectionDecision(d["decision"])
         return cls(**d)

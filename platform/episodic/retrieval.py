@@ -1,32 +1,36 @@
 """Progressive Episodic History Retriever (Metadata Summary -> Evidence Subset -> Full TaskRun)."""
 
-import os
-import json
 from typing import Any, Dict, List, Optional
 from platform.learning.contracts import TaskRun, EvidenceEvent, EventType, VerificationStatus
 from platform.episodic.contracts import TaskRunSummary, EpisodicQuery
+from platform.episodic.backend import (
+    EpisodicBackend,
+    LocalFilesystemEpisodicBackend,
+    DurableSparkEpisodicBackend,
+)
 
 
 class EpisodicRetriever:
     """Provides progressive disclosure over historical TaskRun evidence."""
 
-    def __init__(self, evidence_dir: Optional[str] = None):
-        self.evidence_dir = evidence_dir or "/working_dir/c_b490a8c7dd21c813/.learning/evidence"
+    def __init__(
+        self,
+        backend: Optional[EpisodicBackend] = None,
+        evidence_dir: Optional[str] = None,
+    ):
+        if backend:
+            self.backend = backend
+        elif evidence_dir:
+            self.backend = LocalFilesystemEpisodicBackend(base_dir=evidence_dir)
+        else:
+            self.backend = DurableSparkEpisodicBackend()
 
     def search_task_runs(self, query: EpisodicQuery) -> List[TaskRunSummary]:
+        """Stage 1: Progressive disclosure — Returns compact metadata summaries only."""
         summaries: List[TaskRunSummary] = []
-        if not os.path.exists(self.evidence_dir):
-            return summaries
+        all_runs = self.backend.list_task_runs()
 
-        for fname in os.listdir(self.evidence_dir):
-            if not fname.endswith(".json"):
-                continue
-            fpath = os.path.join(self.evidence_dir, fname)
-            with open(fpath, "r", encoding="utf-8") as f:
-                data = json.load(f)
-
-            task_run = TaskRun.from_dict(data)
-
+        for task_run in all_runs:
             if query.skill_name and task_run.skill_name != query.skill_name:
                 continue
             if query.project_scope_id and task_run.project_scope_id != query.project_scope_id:
@@ -67,7 +71,8 @@ class EpisodicRetriever:
         errors_only: bool = False,
         recoveries_only: bool = False,
     ) -> List[EvidenceEvent]:
-        task_run = self.get_full_task_run(task_run_id)
+        """Stage 2: Progressive disclosure — Returns bounded evidence event subset."""
+        task_run = self.backend.get_task_run(task_run_id)
         if not task_run:
             return []
 
@@ -84,8 +89,5 @@ class EpisodicRetriever:
         return subset
 
     def get_full_task_run(self, task_run_id: str) -> Optional[TaskRun]:
-        fpath = os.path.join(self.evidence_dir, f"{task_run_id}.json")
-        if not os.path.exists(fpath):
-            return None
-        with open(fpath, "r", encoding="utf-8") as f:
-            return TaskRun.from_dict(json.load(f))
+        """Stage 3: Progressive disclosure — Loads full TaskRun only when strictly requested."""
+        return self.backend.get_task_run(task_run_id)

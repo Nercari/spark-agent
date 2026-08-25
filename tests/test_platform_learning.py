@@ -11,6 +11,7 @@ from platform.learning.contracts import (
     TrustClass,
     PayloadOrigin,
     VerificationStatus,
+    ReflectionDecision,
     MutationDecision,
     ReflectionContext,
     SubagentInvocationRequest,
@@ -254,7 +255,7 @@ class TestPlatformLearning(unittest.TestCase):
         }
         """
         proposal = SubagentReflectionParser.parse_proposal(raw_output, self.skill_name, valid_evidence_ids={"ev_1"})
-        self.assertEqual(proposal.decision, MutationDecision.NO_LEARNING)
+        self.assertEqual(proposal.decision, ReflectionDecision.NO_LEARNING)
         self.assertIn("Model cannot emit AUTO_COMMIT", proposal.reason)
 
     def test_ae_cited_evidence_causality_strictness(self):
@@ -315,7 +316,7 @@ class TestPlatformLearning(unittest.TestCase):
         }}
         """
         prop_bad = bridge.consume_response(bad_subagent_output, context)
-        self.assertEqual(prop_bad.decision, MutationDecision.NO_LEARNING)
+        self.assertEqual(prop_bad.decision, ReflectionDecision.NO_LEARNING)
         self.assertFalse(prop_bad.recovery_verified)
 
         good_subagent_output = f"""
@@ -328,7 +329,7 @@ class TestPlatformLearning(unittest.TestCase):
         }}
         """
         prop_good = bridge.consume_response(good_subagent_output, context)
-        self.assertEqual(prop_good.decision, MutationDecision.AUTO_COMMIT)
+        self.assertEqual(prop_good.decision, ReflectionDecision.SKILL_PATCH)
         self.assertTrue(prop_good.recovery_verified)
 
     def test_af_reflection_digest_integrity(self):
@@ -751,4 +752,3 @@ class TestPlatformLearning(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-EOF

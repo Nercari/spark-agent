@@ -46,7 +46,7 @@ class BackgroundLearningReviewer:
                 decision=MutationDecision.REJECT_SYSTEM_SKILL,
             )
 
-        # 2. Strict Operational Payload Provenance & Authority Binding Screening (Part 1)
+        # 2. Strict Operational Payload Provenance & Authority Binding Screening
         user_auth_events = [e for e in task_run.evidence_events if e.trust_class == TrustClass.TRUSTED_USER_AUTHORITY]
         user_auth_text = " ".join([e.content for e in user_auth_events]) if user_auth_events else None
 
@@ -135,14 +135,14 @@ class BackgroundLearningReviewer:
             )
 
         # 4. General Path: Hermes Reflection Engine (Evaluates Experience & Verified Recoveries)
-        reflection = self.reflection_engine.reflect_on_task(task_run)
+        prop, decision, message = self.reflection_engine.reflect_on_task(task_run)
 
-        if reflection.decision == MutationDecision.AUTO_COMMIT and reflection.proposed_procedural_lesson:
+        if decision == MutationDecision.AUTO_COMMIT and prop.proposed_procedural_lesson:
             active_version = self.version_store.get_active_version(target_skill)
             if active_version:
                 new_content = self._append_recovery_lesson(
                     original_content=active_version.content,
-                    lesson=reflection.proposed_procedural_lesson,
+                    lesson=prop.proposed_procedural_lesson,
                 )
                 diff_lines = list(
                     difflib.unified_diff(
@@ -163,9 +163,9 @@ class BackgroundLearningReviewer:
                     base_version_hash=active_version.content_hash,
                     proposed_content=new_content,
                     diff=diff_str,
-                    reason=reflection.reason,
-                    evidence_ids=reflection.evidence_ids,
-                    recovery_verified=reflection.recovery_verified,
+                    reason=prop.reason,
+                    evidence_ids=prop.evidence_ids,
+                    recovery_verified=prop.recovery_verified,
                     decision=MutationDecision.AUTO_COMMIT,
                 )
 
@@ -178,9 +178,9 @@ class BackgroundLearningReviewer:
             base_version_hash="",
             proposed_content="",
             diff="",
-            reason=reflection.reason,
-            decision=reflection.decision,
-            evidence_ids=reflection.evidence_ids,
+            reason=message or prop.reason,
+            decision=decision,
+            evidence_ids=prop.evidence_ids,
         )
 
     def _apply_targeted_patch(self, original_content: str, correction: str, task_run: TaskRun) -> Tuple[str, str]:
@@ -223,4 +223,3 @@ class BackgroundLearningReviewer:
                 f"## Verified Recovery Procedures\n\n- {lesson.strip()}",
             )
         return original_content.rstrip() + f"{recovery_header}- {lesson.strip()}\n"
-EOF

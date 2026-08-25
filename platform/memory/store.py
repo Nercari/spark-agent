@@ -1,4 +1,4 @@
-"""Durable Declarative Memory Store with Scope Isolation, Versioning, and Conflict Protection."""
+"""Durable Declarative Memory Store with Scope Isolation, Versioning, and Authority-Aware Writes."""
 
 import os
 import json
@@ -12,30 +12,30 @@ from platform.memory.contracts import (
     MemoryKind,
     MemoryStatus,
 )
+from platform.memory.backend import (
+    MemoryBackend,
+    LocalFilesystemMemoryBackend,
+    DurableSparkMemoryBackend,
+)
 
 
 class MemoryStore:
-    """Manages persistent declarative memories across USER and PROJECT scopes."""
+    """Manages persistent declarative memories with authority enforcement and revision protection."""
 
-    def __init__(self, base_storage_dir: Optional[str] = None):
-        self.base_dir = base_storage_dir or "/working_dir/c_b490a8c7dd21c813/.learning/memory"
-        os.makedirs(self.base_dir, exist_ok=True)
-        self.records_dir = os.path.join(self.base_dir, "records")
-        os.makedirs(self.records_dir, exist_ok=True)
-
-    def _get_record_path(self, record_id: str) -> str:
-        return os.path.join(self.records_dir, f"{record_id}.json")
-
-    def _save_record(self, record: MemoryRecord):
-        with open(self._get_record_path(record.id), "w", encoding="utf-8") as f:
-            json.dump(record.to_dict(), f, indent=2)
+    def __init__(
+        self,
+        backend: Optional[MemoryBackend] = None,
+        base_storage_dir: Optional[str] = None,
+    ):
+        if backend:
+            self.backend = backend
+        elif base_storage_dir:
+            self.backend = LocalFilesystemMemoryBackend(base_dir=base_storage_dir)
+        else:
+            self.backend = DurableSparkMemoryBackend()
 
     def get_memory(self, record_id: str) -> Optional[MemoryRecord]:
-        path = self._get_record_path(record_id)
-        if not os.path.exists(path):
-            return None
-        with open(path, "r", encoding="utf-8") as f:
-            return MemoryRecord.from_dict(json.load(f))
+        return self.backend.get(record_id)
 
     def create_or_update_memory(
         self,
@@ -45,11 +45,16 @@ class MemoryStore:
         key: str,
         value: Any,
         provenance_evidence_ids: List[str],
+        is_trusted_user_authority: bool = True,
+        expected_revision: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[MemoryRecord, Optional[MemoryRecord]]:
-        """Creates a memory or supersedes an existing active memory with a newer trusted value."""
+    ) -> Tuple[Optional[MemoryRecord], Optional[MemoryRecord], bool, str]:
+        """Authority-aware creation and supersession of memory records.
+
+        Returns: (new_record, superseded_record, success, message)
+        """
         normalized_key = key.strip().lower().replace(" ", "_")
-        
+
         existing_records = self.retrieve_memories(
             scope=scope,
             scope_id=scope_id,
@@ -61,13 +66,33 @@ class MemoryStore:
         supersedes_id: Optional[str] = None
 
         if existing_records:
-            superseded_record = existing_records[0]
+            active_mem = existing_records[0]
+            # Part 5: Unauthorized external writes cannot overwrite active user memory
+            if not is_trusted_user_authority:
+                conflicts = active_mem.metadata.setdefault("candidate_conflicts", [])
+                conflicts.append({
+                    "detected_at": datetime.now(timezone.utc).isoformat(),
+                    "untrusted_value": value,
+                    "provenance": provenance_evidence_ids,
+                })
+                self.backend.update(active_mem)
+                return active_mem, None, False, f"Unauthorized external evidence cannot overwrite active user memory for '{normalized_key}'."
+
+            # Part 6: Lightweight revision protection
+            current_rev = active_mem.metadata.get("revision")
+            if expected_revision and current_rev != expected_revision:
+                return None, None, False, f"Stale-write race on key '{normalized_key}': expected revision {expected_revision}, got {current_rev}."
+
+            superseded_record = active_mem
             supersedes_id = superseded_record.id
             superseded_record.status = MemoryStatus.SUPERSEDED
             superseded_record.metadata["superseded_at"] = datetime.now(timezone.utc).isoformat()
-            self._save_record(superseded_record)
+            self.backend.update(superseded_record)
 
         now_iso = datetime.now(timezone.utc).isoformat()
+        meta = metadata or {}
+        meta["revision"] = f"rev_{uuid.uuid4().hex[:8]}"
+
         new_record = MemoryRecord(
             id=f"mem_{uuid.uuid4().hex[:10]}",
             scope=scope,
@@ -80,10 +105,10 @@ class MemoryStore:
             last_confirmed_at=now_iso,
             status=MemoryStatus.ACTIVE,
             supersedes_memory_id=supersedes_id,
-            metadata=metadata or {},
+            metadata=meta,
         )
-        self._save_record(new_record)
-        return new_record, superseded_record
+        self.backend.put(new_record)
+        return new_record, superseded_record, True, "Memory persisted successfully."
 
     def handle_external_conflict(
         self,
@@ -94,7 +119,7 @@ class MemoryStore:
         source_evidence_id: str,
         source_ref: str = "",
     ) -> Tuple[bool, str, Optional[MemoryRecord]]:
-        """Handles conflicting external evidence without destructively overwriting user-authorized memory."""
+        """Safely logs conflicting external evidence without mutating active user truth."""
         normalized_key = key.strip().lower().replace(" ", "_")
         existing_records = self.retrieve_memories(
             scope=scope,
@@ -117,7 +142,7 @@ class MemoryStore:
             "source_evidence_id": source_evidence_id,
             "source_ref": source_ref,
         })
-        self._save_record(active_mem)
+        self.backend.update(active_mem)
         return False, f"External conflict noted for key '{normalized_key}'; existing user memory preserved as authoritative.", active_mem
 
     def retrieve_memories(
@@ -127,33 +152,13 @@ class MemoryStore:
         key: Optional[str] = None,
         status: MemoryStatus = MemoryStatus.ACTIVE,
     ) -> List[MemoryRecord]:
-        """Retrieves memories enforcing scope isolation."""
-        normalized_key = key.strip().lower().replace(" ", "_") if key else None
-        results = []
-
-        if not os.path.exists(self.records_dir):
-            return results
-
-        for fname in os.listdir(self.records_dir):
-            if not fname.endswith(".json"):
-                continue
-            fpath = os.path.join(self.records_dir, fname)
-            with open(fpath, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            rec = MemoryRecord.from_dict(data)
-
-            if status and rec.status != status:
-                continue
-            if scope and rec.scope != scope:
-                continue
-            if scope_id and rec.scope_id != scope_id:
-                continue
-            if normalized_key and rec.key != normalized_key:
-                continue
-
-            results.append(rec)
-
-        return results
+        """Retrieves memories from backend enforcing scope isolation."""
+        return self.backend.list(
+            scope=scope,
+            scope_id=scope_id,
+            key=key,
+            status=status,
+        )
 
     def retrieve_for_context(
         self,
