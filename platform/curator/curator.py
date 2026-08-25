@@ -141,4 +141,3 @@ class AutonomousLearningCurator:
             corrections_count=corrections,
             actions=action_records,
         )
-EOF

@@ -316,4 +316,3 @@ class LearningLifecycleObserver:
     ) -> CuratorExecutionResult:
         """Resumes external host runtime rollback execution automatically."""
         return self.curator.executor.consume_runtime_result(request, result)
-EOF
