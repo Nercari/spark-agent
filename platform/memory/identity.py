@@ -19,7 +19,13 @@ class EnvironmentIdentityProvider:
         for key in ("SPARK_PROFILE_ID", "SPARK_USER_ID", "SPARK_RUNTIME_USER_ID", "SPARK_AUTH_USER"):
             val = os.environ.get(key)
             if val and val.strip():
-                return val.strip()
+                clean = val.strip()
+                if clean.lower() == "default_user":
+                    raise ValueError("Forbidden: 'default_user' is not permitted in production identity resolution.")
+                if clean.startswith("usr_") or clean.startswith("test_"):
+                    return clean
+                hashed = hashlib.sha256(clean.encode("utf-8")).hexdigest()[:16]
+                return f"usr_{hashed}"
         return None
 
 
@@ -46,6 +52,8 @@ class SparkIdentityRuntimeAdapter:
         clean_raw = raw.strip()
         if clean_raw.lower() == "default_user":
             raise ValueError("Forbidden: 'default_user' is not permitted in production identity resolution.")
+        if clean_raw.startswith("usr_") or clean_raw.startswith("test_"):
+            return clean_raw
         hashed = hashlib.sha256(clean_raw.encode("utf-8")).hexdigest()[:16]
         return f"usr_{hashed}"
 
@@ -55,18 +63,22 @@ def resolve_runtime_user_id(
     provider: Optional[RuntimeIdentityProvider] = None,
     allow_synthetic_fallback: bool = False,
 ) -> str:
-    """Resolves authoritative user identity.
+    """Resolves authoritative user identity as a sanitized opaque scope ID.
 
     Enforces:
-    1. No hard-coded personal email/account strings in source code.
-    2. In production (allow_synthetic_fallback=False), if no identity is supplied, fails closed.
-    3. Rejects 'default_user' in production.
+    1. No hard-coded personal email/account strings in source code or storage.
+    2. Raw identifiers are converted into opaque scope IDs (usr_<digest>).
+    3. In production (allow_synthetic_fallback=False), if no identity is supplied, fails closed.
+    4. Rejects 'default_user' in production.
     """
     if explicit_user_id and explicit_user_id.strip():
         clean_id = explicit_user_id.strip()
         if not allow_synthetic_fallback and clean_id.lower() == "default_user":
             raise ValueError("Forbidden: 'default_user' is not permitted in production identity resolution.")
-        return clean_id
+        if clean_id.startswith("usr_") or clean_id.startswith("test_"):
+            return clean_id
+        hashed = hashlib.sha256(clean_id.encode("utf-8")).hexdigest()[:16]
+        return f"usr_{hashed}"
 
     active_provider = provider or EnvironmentIdentityProvider()
     resolved = active_provider.resolve_user_scope_id()

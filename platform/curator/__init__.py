@@ -11,6 +11,8 @@ from platform.curator.contracts import (
     CuratorEvaluationReport,
     CuratorActionRecord,
     CuratorExecutionResult,
+    CuratorRuntimeRollbackRequest,
+    RuntimeRollbackResult,
     LearningHealthReport,
 )
 from platform.curator.telemetry import LearningTelemetryLedger
@@ -30,6 +32,8 @@ __all__ = [
     "CuratorEvaluationReport",
     "CuratorActionRecord",
     "CuratorExecutionResult",
+    "CuratorRuntimeRollbackRequest",
+    "RuntimeRollbackResult",
     "LearningHealthReport",
     "LearningTelemetryLedger",
     "CuratorEvaluator",
@@ -39,3 +43,4 @@ __all__ = [
     "LearningLifecycleObserver",
     "AutonomousLearningCurator",
 ]
+EOF

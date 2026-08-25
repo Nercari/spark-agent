@@ -40,7 +40,7 @@ class LearningTelemetryLedger:
         elif isinstance(used, UsageState):
             used_str = used.value
         else:
-            used_str = str(used).upper()
+            used_str = str(used).upper() if used is not None else "UNKNOWN"
             if used_str not in {"TRUE", "FALSE", "UNKNOWN"}:
                 used_str = "UNKNOWN"
 
@@ -56,7 +56,7 @@ class LearningTelemetryLedger:
             recovery_required=recovery_required,
             observed_effect=observed_effect,
         )
-        self._append_record(rec)
+        self._save_record(rec)
         return rec
 
     def record_memory_outcome(
@@ -74,7 +74,7 @@ class LearningTelemetryLedger:
         elif isinstance(used, UsageState):
             used_str = used.value
         else:
-            used_str = str(used).upper()
+            used_str = str(used).upper() if used is not None else "UNKNOWN"
             if used_str not in {"TRUE", "FALSE", "UNKNOWN"}:
                 used_str = "UNKNOWN"
 
@@ -89,12 +89,25 @@ class LearningTelemetryLedger:
             observed_effect=observed_effect,
             metadata=metadata or {},
         )
-        self._append_record(rec)
+        self._save_record(rec)
         return rec
 
-    def _append_record(self, record: LearningOutcomeRecord):
-        with open(self.ledger_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record.to_dict()) + "\n")
+    def _save_record(self, record: LearningOutcomeRecord):
+        records = self.get_all_records()
+        updated = False
+        for i, r in enumerate(records):
+            if (r.artifact_type == record.artifact_type and
+                r.artifact_id == record.artifact_id and
+                r.task_run_id == record.task_run_id):
+                records[i] = record
+                updated = True
+                break
+        if not updated:
+            records.append(record)
+
+        with open(self.ledger_path, "w", encoding="utf-8") as f:
+            for r in records:
+                f.write(json.dumps(r.to_dict()) + "\n")
 
     def get_all_records(self) -> List[LearningOutcomeRecord]:
         if not os.path.exists(self.ledger_path):
@@ -148,9 +161,10 @@ class LearningTelemetryLedger:
 
                 if r.verification_status == VerificationStatus.VERIFIED_SUCCESS:
                     telemetry.verified_success_count += 1
-                if r.metadata.get("conflict_observed", False):
-                    telemetry.conflict_count += 1
+                if r.metadata.get("conflict_observed", False) or r.metadata.get("candidate_conflicts"):
+                    telemetry.conflict_count += len(r.metadata.get("candidate_conflicts", [1]))
                 if r.metadata.get("is_correction", False):
                     telemetry.correction_count += 1
 
         return telemetry
+EOF

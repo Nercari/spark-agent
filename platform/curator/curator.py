@@ -76,6 +76,7 @@ class AutonomousLearningCurator:
         task_family: Optional[str] = None,
         trigger_reason: str = "automatic_task_completion",
         runtime_adapter: Optional[Any] = None,
+        allow_local_fallback: bool = False,
         task_run_id: str = "curator_lifecycle_task",
     ) -> Tuple[CuratorEvaluationReport, CuratorExecutionResult]:
         """Automatically evaluates and applies required lifecycle mutations when triggered."""
@@ -89,6 +90,7 @@ class AutonomousLearningCurator:
             result = self.executor.apply_decision(
                 report=report,
                 runtime_adapter=runtime_adapter,
+                allow_local_fallback=allow_local_fallback,
                 task_run_id=task_run_id,
             )
             return report, result

@@ -1,4 +1,4 @@
-"""Data contracts for Autonomous Learning Curator, Lifecycle Telemetry & Action Audit."""
+"""Data contracts for Autonomous Learning Curator, Lifecycle Telemetry, Rollback Protocols & Action Audit."""
 
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
@@ -42,7 +42,7 @@ class LearningOutcomeRecord:
     version_or_record_id: str
     task_run_id: str
     retrieved: bool
-    used: str = "TRUE"  # TRUE | FALSE | UNKNOWN
+    used: str = "UNKNOWN"  # TRUE | FALSE | UNKNOWN
     task_family: str = "default_task_family"
     verification_status: VerificationStatus = VerificationStatus.UNKNOWN
     recovery_required: bool = False
@@ -144,6 +144,34 @@ class CuratorEvaluationReport:
 
 
 @dataclass
+class CuratorRuntimeRollbackRequest:
+    action_id: str
+    task_run_id: str
+    skill_name: str
+    evaluated_version: str
+    expected_runtime_hash: str
+    rollback_target_version: str
+    target_content: str
+    target_hash: str
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class RuntimeRollbackResult:
+    action_id: str
+    skill_name: str
+    status: str  # SUCCESS | STALE_HASH_MISMATCH | READBACK_MISMATCH | UPDATE_FAILED
+    observed_before_hash: Optional[str] = None
+    observed_after_hash: Optional[str] = None
+    message: str = ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
 class CuratorActionRecord:
     action_id: str
     task_run_id: str
@@ -156,6 +184,7 @@ class CuratorActionRecord:
     rollback_target: Optional[str] = None
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     details: str = ""
+    audit_trail: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
@@ -219,3 +248,4 @@ class LearningHealthReport:
             "evaluations": [e.to_dict() for e in self.evaluations],
             "actions": [a.to_dict() for a in self.actions],
         }
+EOF
