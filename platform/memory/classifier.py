@@ -21,11 +21,12 @@ class MemoryClassifier:
         cleaned = text.strip()
         lower = cleaned.lower()
 
+        # 1. Detect Procedural Skills: "before X, always Y", "first do A, then B", multi-step workflow rules
         procedural_patterns = [
             r"before\s+.*,\s*(?:always|ensure|run|execute|perform)",
             r"first\s+.*,\s*then\s+.*",
             r"workflow\s+steps",
-            r"always\s+(?:run|execute|call|decompress|fetch|drain)\s+.*\s+(?:before|after)",
+            r"always\s+(?:run|execute|call|decompress|fetch|drain)\s+.*?\s+(?:before|after)",
             r"step\s+\d+:\s*",
         ]
         for pat in procedural_patterns:
@@ -36,6 +37,7 @@ class MemoryClassifier:
                     reason="Identified multi-step procedural workflow instruction; belongs in a procedural Skill.",
                 )
 
+        # 2. Detect User Preferences: "I prefer X", "My preferred format is X"
         pref_match = re.search(r"(?:i prefer|my preference is|i like|always format my)\s+([^.]+)", lower)
         if pref_match:
             val = pref_match.group(1).strip()
@@ -52,6 +54,7 @@ class MemoryClassifier:
                 reason="User expressed a personal preference; stored as user PREFERENCE memory.",
             )
 
+        # 3. Detect Project Conventions / Terminology: "we call customers 'members'", "for this project X means Y"
         convention_match = re.search(r"(?:we call|we refer to|terminology for)\s+([^.]+)", lower)
         if convention_match and project_scope_id:
             return MemoryClassificationResult(
@@ -64,11 +67,12 @@ class MemoryClassifier:
                 reason="Project naming convention detected; stored as project CONVENTION memory.",
             )
 
+        # 4. Detect Project Environment / Fact / Convention: "status artifacts should use compact_json", "our production region is us-east-1", "use standard_json as export format"
         fact_patterns = [
-            (r"(?:canonical\s+export\s+format|export\s+format)\s+(?:is|to|use)?\s*[`'\"]?([a-zA-Z0-9_-]+)[`'\"]?", "canonical_export_format", MemoryKind.FACT),
+            (r"(?:canonical\s+export\s+format|export\s+format|status\s+artifacts?|export\s+artifacts?)\s+(?:should\s+use|use|is|to)?\s*[`'\"]?([a-zA-Z0-9_-]+)[`'\"]?", "canonical_export_format", MemoryKind.FACT),
             (r"(?:production|staging|deployment)\s+(?:region|zone|bucket)\s+(?:is|to)\s*[`'\"]?([a-zA-Z0-9_-]+)[`'\"]?", "deployment_environment", MemoryKind.ENVIRONMENT),
             (r"(?:use|set)\s+[`'\"]?([a-zA-Z0-9_-]+)[`'\"]?\s+as\s+(?:the\s+)?(?:canonical\s+)?export\s+format", "canonical_export_format", MemoryKind.FACT),
-            (r"(?:change that —|no —|update:)?\s*this project (?:now )?uses\s+[`'\"]?([a-zA-Z0-9_-]+)[`'\"]?", "canonical_export_format", MemoryKind.CORRECTION),
+            (r"(?:change that —|no —|update:)?\s*this (?:project|pilot) (?:now )?uses\s+[`'\"]?([a-zA-Z0-9_-]+)[`'\"]?", "canonical_export_format", MemoryKind.CORRECTION),
         ]
 
         for pat, key, kind in fact_patterns:

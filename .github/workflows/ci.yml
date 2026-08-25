@@ -31,3 +31,5 @@ jobs:
         run: python3 -m unittest discover -s projects/autonomous-learning-tracer/tests -v
       - name: Run memory tracer tests
         run: python3 -m unittest discover -s projects/memory-tracer/tests -v
+      - name: Run autonomy pilot tests
+        run: python3 -m unittest discover -s projects/autonomy-pilot/tests -v

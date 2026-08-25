@@ -1,0 +1,18 @@
+{
+  "pilot_id": "autonomy_pilot_1",
+  "sessions": 3,
+  "tasks_total": 10,
+  "verified_successes": 10,
+  "verified_failures": 0,
+  "user_corrections": 1,
+  "manual_developer_interventions": 0,
+  "recoveries_required": 1,
+  "repeated_failures": 0,
+  "learned_skill_reuses": 1,
+  "memory_reuses": 2,
+  "episodic_retrieval_uses": 1,
+  "automatic_rollbacks": 0,
+  "lifecycle_complete_count": 10,
+  "user_intervention_rate": 0.1,
+  "recovery_rate": 0.1
+}
