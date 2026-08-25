@@ -32,7 +32,7 @@ class TestMemoryTracer(unittest.TestCase):
         self.project_b = "project_beta"
 
     def tearDown(self):
-        shutil.rmtree(self.temp_dir)
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_full_memory_lifecycle(self):
         t1_res = self.runner.execute_task_1_store_fact(

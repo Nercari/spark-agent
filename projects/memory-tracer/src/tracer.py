@@ -16,23 +16,26 @@ class MemoryTracerRunner:
         self.episodic_retriever = EpisodicRetriever(evidence_dir=evidence_dir)
 
     def execute_task_1_store_fact(self, user_instruction: str, project_scope_id: str) -> Dict[str, Any]:
+        """Task 1: Classifies and persists a project fact automatically."""
         classification = MemoryClassifier.classify(
             text=user_instruction,
             project_scope_id=project_scope_id,
         )
         if classification.is_memory:
-            record, _ = self.memory_store.create_or_update_memory(
+            record, _, ok, msg = self.memory_store.create_or_update_memory(
                 scope=classification.scope or MemoryScope.PROJECT,
                 scope_id=classification.scope_id or project_scope_id,
                 kind=classification.kind or MemoryKind.FACT,
                 key=classification.key or "canonical_export_format",
                 value=classification.value,
                 provenance_evidence_ids=["ev_user_task_1"],
+                is_trusted_user_authority=True,
             )
-            return {"status": "STORED", "memory": record}
+            return {"status": "STORED" if ok else "FAILED", "memory": record, "message": msg}
         return {"status": "SKIPPED", "reason": classification.reason}
 
     def execute_task_2_retrieve_fact(self, project_scope_id: str, query_key: str) -> Dict[str, Any]:
+        """Task 2: Retrieves active memory without user repeating instructions."""
         memories, stats = self.memory_retriever.retrieve(
             project_scope_id=project_scope_id,
             query_keys=[query_key],
@@ -42,23 +45,26 @@ class MemoryTracerRunner:
         return {"status": "NOT_FOUND", "stats": stats}
 
     def execute_correction_supersede(self, user_correction: str, project_scope_id: str) -> Dict[str, Any]:
+        """Correction: Automatically supersedes old active memory."""
         classification = MemoryClassifier.classify(
             text=user_correction,
             project_scope_id=project_scope_id,
         )
         if classification.is_memory:
-            new_record, old_record = self.memory_store.create_or_update_memory(
+            new_record, old_record, ok, msg = self.memory_store.create_or_update_memory(
                 scope=classification.scope or MemoryScope.PROJECT,
                 scope_id=classification.scope_id or project_scope_id,
                 kind=classification.kind or MemoryKind.CORRECTION,
                 key=classification.key or "canonical_export_format",
                 value=classification.value,
                 provenance_evidence_ids=["ev_user_correction"],
+                is_trusted_user_authority=True,
             )
             return {
-                "status": "SUPERSEDED",
+                "status": "SUPERSEDED" if ok else "FAILED",
                 "new_memory": new_record,
                 "old_memory": old_record,
+                "message": msg,
             }
         return {"status": "FAILED", "reason": classification.reason}
 
@@ -69,6 +75,7 @@ class MemoryTracerRunner:
         untrusted_value: str,
         source_evidence_id: str,
     ) -> Dict[str, Any]:
+        """Tests that external untrusted evidence does NOT overwrite user-authorized memory."""
         overwritten, msg, active_mem = self.memory_store.handle_external_conflict(
             scope=MemoryScope.PROJECT,
             scope_id=project_scope_id,
@@ -80,6 +87,7 @@ class MemoryTracerRunner:
         return {"overwritten": overwritten, "message": msg, "active_value": active_mem.value if active_mem else None}
 
     def test_project_isolation(self, project_b_id: str, query_key: str) -> Dict[str, Any]:
+        """Tests that Project B does NOT inherit Project A's memories."""
         memories, stats = self.memory_retriever.retrieve(
             project_scope_id=project_b_id,
             query_keys=[query_key],
@@ -87,6 +95,7 @@ class MemoryTracerRunner:
         return {"leaked": len(memories) > 0, "memories": memories, "stats": stats}
 
     def test_episodic_search(self, skill_name: Optional[str] = None) -> Dict[str, Any]:
+        """Retrieves prior TaskRuns progressively."""
         query = EpisodicQuery(skill_name=skill_name, limit=5)
         summaries = self.episodic_retriever.search_task_runs(query)
         return {"count": len(summaries), "summaries": [s.to_dict() for s in summaries]}
