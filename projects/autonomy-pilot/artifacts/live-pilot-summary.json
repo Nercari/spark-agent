@@ -1,45 +1,60 @@
 {
   "pilot_id": "autonomy_pilot_1_1",
-  "milestone": "Autonomy Pilot 1.1 — Live Pilot, No Simulation",
+  "milestone": "Autonomy Pilot 1.1 — Evidence Classification & Grounding",
   "evidence_classification": {
-    "live_spark_tasks": {
+    "live_spark_operations": {
       "github_live_inspection": {
         "evidence_class": "LIVE_SPARK",
-        "tool": "custom_mcp:get_commit, custom_mcp:list_branches",
+        "tools_called": [
+          "custom_mcp:get_commit",
+          "custom_mcp:list_branches"
+        ],
         "target": "Nercari/spark-agent",
         "status": "VERIFIED_LIVE",
-        "result": "Genuinely read remote HEAD commit 496d1f7 and branch main directly from GitHub REST API."
+        "result": "Genuinely queried remote HEAD commit and branch main directly via GitHub REST API."
       },
       "runtime_skill_lookup": {
         "evidence_class": "LIVE_SPARK",
-        "tool": "skills:lookup_skills",
+        "tools_called": [
+          "skills:lookup_skills"
+        ],
         "target": "user:structured-formatter",
         "status": "VERIFIED_LIVE",
-        "result": "Genuinely loaded skill from active runtime surface with verified content hash."
+        "result": "Genuinely loaded skill from active runtime surface with verified content hash.",
+        "note": "Proves runtime lookup/retrieval only. Does NOT prove skill use or causal help in normal task execution."
       },
       "natural_procedural_learning": {
         "evidence_class": "LIVE_SPARK",
         "status": "NO_NATURAL_PROCEDURAL_LEARNING_EVENT_OCCURRED",
         "result": "No recoverable procedural failure occurred during live operations; none manufactured."
+      },
+      "live_lifecycle_coverage": {
+        "evidence_class": "SPARK_REPORTED_PRIVATE_RUNTIME",
+        "status": "UNKNOWN / NOT YET VERIFIED LIVE",
+        "note": "Task start/completion lifecycle hooks for interactive LLM turns are not directly observable outside the host process."
       }
     },
-    "local_harness_integration_tests": {
+    "local_harness_integration_suite": {
       "evidence_class": "LOCAL_HARNESS",
       "test_suite": "projects/autonomy-pilot/tests/test_pilot.py",
       "status": "PASSED_IN_CI",
       "tasks_total": 10,
-      "scope": "Verifies data models, state machine transitions, SQLite concurrency, and memory supersession algorithms within sandbox/CI."
+      "scope": "Validates data contracts, CAS state machines, SQLite telemetry persistence, and memory supersession algorithms within reconstructed local Python session objects in CI.",
+      "metrics_type": "HARNESS_METRICS",
+      "note": "Validates code and algorithms in CI; does not represent autonomous multi-conversation LLM execution."
     },
-    "controlled_safety_tests": {
-      "evidence_class": "CONTROLLED_LIVE_SAFETY",
-      "status": "VERIFIED_ISOLATED",
-      "scope": "Automated regression detection and rollback protocol tested separately from normal workload metrics."
+    "controlled_safety_verification": {
+      "evidence_class": "CONTROLLED_LOCAL_SAFETY",
+      "test_module": "projects/autonomy-pilot/src/runner.py:run_controlled_safety_test",
+      "status": "PASSED_IN_CI",
+      "scope": "Verifies local CuratorTriggerPolicy and VersionStore rollback state machine on simulated regression child in local test harness.",
+      "note": "Local harness test only. End-to-end host runtime rollback requires live skills:* tool orchestration."
     },
     "host_capability_blocker": {
       "evidence_class": "SPARK_REPORTED_PRIVATE_RUNTIME",
       "status": "BLOCKED",
       "blocker_code": "BLOCKED BY HOST CAPABILITY: GENUINELY FRESH SPARK SESSION CREATION NOT AVAILABLE",
-      "description": "Host environment does not expose an autonomous multi-session coordination API to spawn, prompt, and step through disjoint top-level conversations programmatically."
+      "description": "Host environment does not expose an autonomous multi-session coordination API allowing an agent in one session to spawn, prompt, and step through disjoint top-level conversations programmatically."
     }
   }
 }
