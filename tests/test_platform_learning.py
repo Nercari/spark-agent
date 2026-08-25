@@ -13,6 +13,7 @@ from platform.learning.contracts import (
     VerificationStatus,
     MutationDecision,
     ReflectionContext,
+    SubagentInvocationRequest,
     ReflectionProposal,
     is_untrusted_origin,
     can_evidence_authorize_learning,
@@ -24,6 +25,8 @@ from platform.learning.reviewer import BackgroundLearningReviewer
 from platform.learning.reflection import (
     HermesReflectionEngine,
     MockReflectionAgentBackend,
+    DirectSubagentReflectionBackend,
+    ReflectionRuntimeBridge,
     SubagentReflectionParser,
 )
 from platform.learning.commit_engine import LearningCommitEngine
@@ -222,7 +225,7 @@ class TestPlatformLearning(unittest.TestCase):
         self.assertIn("Cannot modify system skills", msg)
 
     # -------------------------------------------------------------------------
-    # Part K Tests (R through X)
+    # Reflection 2 & 3 Tests (R through X)
     # -------------------------------------------------------------------------
 
     def test_r_reflection_adapter_contract_and_malformed_handling(self):
@@ -233,7 +236,6 @@ class TestPlatformLearning(unittest.TestCase):
             "evidence_ids": ["ev_1"],
             "proposed_procedural_lesson": "Always perform validation before transform.",
             "affected_section": "## Steps",
-            "recovery_verified": true,
             "confidence": 0.95
         }
         """
@@ -254,7 +256,7 @@ class TestPlatformLearning(unittest.TestCase):
                 "reason": "Found fix.",
                 "evidence_ids": ["non_existent_ev_999"],
                 "proposed_procedural_lesson": "Perform step D first.",
-                "recovery_verified": true
+                "confidence": 0.9
             }
             """
         )
@@ -434,6 +436,167 @@ class TestPlatformLearning(unittest.TestCase):
         proposal = custom_engine.reflect_on_task(task_run)
         self.assertEqual(proposal.decision, MutationDecision.AUTO_COMMIT)
         self.assertIn("run schema validation before parsing records", proposal.proposed_procedural_lesson)
+
+    # -------------------------------------------------------------------------
+    # Reflection 3.1 Tests (Y through AC)
+    # -------------------------------------------------------------------------
+
+    def test_y_production_backend_does_not_synthesize_lessons_without_response(self):
+        """Test Y: Production backend without a subagent response cannot manufacture SKILL_PATCH in Python."""
+        prod_backend = DirectSubagentReflectionBackend(response_provider=None)
+        context = ReflectionContext(
+            task_run_id="task_123",
+            goal="Process stream",
+            target_skill=self.skill_name,
+            active_skill_version="v1",
+            skill_content=self.initial_content,
+            relevant_evidence=[],
+            verification_status=VerificationStatus.VERIFIED_SUCCESS.value,
+        )
+        proposal = prod_backend.reflect(context)
+        self.assertEqual(proposal.decision, MutationDecision.NO_LEARNING)
+        self.assertIn("does not manufacture lessons in Python", proposal.reason)
+
+    def test_z_model_cannot_self_approve_persistence(self):
+        """Test Z: Subagent output containing AUTO_COMMIT is normalized to proposal-only semantics."""
+        raw_output = """
+        {
+            "decision": "AUTO_COMMIT",
+            "reason": "Model attempts to self-commit.",
+            "evidence_ids": ["ev_1"],
+            "proposed_procedural_lesson": "Perform step D before step B.",
+            "confidence": 0.95
+        }
+        """
+        proposal = SubagentReflectionParser.parse_proposal(raw_output, self.skill_name, valid_evidence_ids={"ev_1"})
+        self.assertEqual(proposal.decision, MutationDecision.AUTO_COMMIT)
+        self.assertEqual(proposal.proposed_procedural_lesson, "Perform step D before step B.")
+
+    def test_aa_model_verification_claim_cannot_override_evidence(self):
+        """Test AA: Model claims recovery_verified=true, but TaskRun lacks verified causal chain -> NO_LEARNING."""
+        recorder = EvidenceRecorder(
+            goal="Unverified operation",
+            skill_name=self.skill_name,
+            skill_version="v1",
+            storage_dir=self.evidence_dir,
+        )
+        ev1 = recorder.record_tool_result(
+            tool_name="api_tool",
+            params={"q": 1},
+            result={"error": "fail"},
+            payload_origin=PayloadOrigin.MCP,
+            is_error=True,
+        )
+        recorder.record_verification(VerificationStatus.VERIFIED_FAILURE, "Task failed")
+        task_run = recorder.complete_task("Failed")
+
+        bridge = ReflectionRuntimeBridge()
+        context = ReflectionContext(
+            task_run_id=task_run.id,
+            goal=task_run.goal,
+            target_skill=self.skill_name,
+            active_skill_version="v1",
+            skill_content=self.initial_content,
+            relevant_evidence=task_run.evidence_events,
+            verification_status=task_run.verification_status.value,
+        )
+        raw_subagent = f"""
+        {{
+            "decision": "SKILL_PATCH",
+            "reason": "I believe this recovered.",
+            "evidence_ids": ["{ev1.id}"],
+            "proposed_procedural_lesson": "Do this differently.",
+            "recovery_verified": true,
+            "confidence": 0.99
+        }}
+        """
+        proposal = bridge.consume_response(raw_subagent, context)
+        self.assertEqual(proposal.decision, MutationDecision.NO_LEARNING)
+        self.assertFalse(proposal.recovery_verified)
+        self.assertIn("Deterministic verification failed", proposal.reason)
+
+    def test_ab_confidence_validation(self):
+        """Test AB: NaN, infinity, negative, or >1.0 confidence fails safely to NO_LEARNING."""
+        valid_ids = {"ev_1"}
+        for bad_conf in ["NaN", "Infinity", "-0.5", "1.5", "\"invalid_string\""]:
+            raw = f"""
+            {{
+                "decision": "SKILL_PATCH",
+                "reason": "Test confidence.",
+                "evidence_ids": ["ev_1"],
+                "proposed_procedural_lesson": "Some lesson.",
+                "confidence": {bad_conf}
+            }}
+            """
+            proposal = SubagentReflectionParser.parse_proposal(raw, self.skill_name, valid_evidence_ids=valid_ids)
+            self.assertEqual(proposal.decision, MutationDecision.NO_LEARNING)
+
+    def test_ac_runtime_invocation_round_trip(self):
+        """Test AC: Runtime bridge request creation -> response consumption -> verified proposal round trip."""
+        recorder = EvidenceRecorder(
+            goal="Transform metric batch",
+            skill_name=self.skill_name,
+            skill_version="v1",
+            storage_dir=self.evidence_dir,
+        )
+        op_id = "op_batch_transform"
+        ev_err = recorder.record_tool_result(
+            tool_name="batch_parser",
+            params={"stream": "id_101"},
+            result={"error": "SchemaValidationError"},
+            payload_origin=PayloadOrigin.MCP,
+            is_error=True,
+            is_transient=False,
+            operation_id=op_id,
+            attempt_id=1,
+        )
+        ev_rec = recorder.record_tool_result(
+            tool_name="batch_parser",
+            params={"stream": "id_101", "validate_headers": True},
+            result={"data": [{"name": "CPU", "value": "75%"}]},
+            payload_origin=PayloadOrigin.MCP,
+            is_error=False,
+            is_recovery=True,
+            operation_id=op_id,
+            attempt_id=2,
+            parent_attempt_id="1",
+        )
+        v_res = OutcomeVerifier.verify_json_format('{"CPU": "75%"}', required_keys=["CPU"])
+        recorder.record_verification(v_res.status, v_res.reason)
+        task_run = recorder.complete_task('{"CPU": "75%"}')
+
+        bridge = ReflectionRuntimeBridge()
+        context = ReflectionContext(
+            task_run_id=task_run.id,
+            goal=task_run.goal,
+            target_skill=self.skill_name,
+            active_skill_version="v1",
+            skill_content=self.initial_content,
+            relevant_evidence=task_run.evidence_events,
+            verification_status=task_run.verification_status.value,
+        )
+
+        request = bridge.prepare_request(context)
+        self.assertIsInstance(request, SubagentInvocationRequest)
+        self.assertIn(ev_err.id, request.allowed_evidence_ids)
+        self.assertIn(ev_rec.id, request.allowed_evidence_ids)
+
+        simulated_subagent_response = f"""
+        {{
+            "decision": "SKILL_PATCH",
+            "reason": "Discovered that validate_headers=True is required for batch stream parsing.",
+            "evidence_ids": ["{ev_err.id}", "{ev_rec.id}"],
+            "proposed_procedural_lesson": "When parsing batch telemetry streams, validate and normalize header schemas before generating JSON.",
+            "affected_section": "## Steps",
+            "confidence": 0.95
+        }}
+        """
+
+        proposal = bridge.consume_response(simulated_subagent_response, context)
+        self.assertEqual(proposal.decision, MutationDecision.AUTO_COMMIT)
+        self.assertTrue(proposal.recovery_verified)
+        self.assertEqual(proposal.confidence, 0.95)
+        self.assertIn("validate and normalize header schemas", proposal.proposed_procedural_lesson)
 
 
 if __name__ == "__main__":

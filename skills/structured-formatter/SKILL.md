@@ -24,3 +24,4 @@ Format and transform system and infrastructure metrics into standardized outputs
 
 - When formatting mixed-unit telemetry, always apply `unit_normalization=True` to satisfy standardization requirements.
 - When parsing batch telemetry streams, validate and normalize header schemas (`validate_headers=true`) before generating standard JSON objects.
+- When processing compressed stream archives, drain the stream buffer (`drain_stream=true`) prior to decompression to prevent buffer errors.

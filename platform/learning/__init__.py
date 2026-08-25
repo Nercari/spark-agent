@@ -12,6 +12,7 @@ from platform.learning.contracts import (
     VerificationStatus,
     MutationDecision,
     ReflectionContext,
+    SubagentInvocationRequest,
     ReflectionProposal,
     is_untrusted_origin,
     can_evidence_authorize_learning,
@@ -27,6 +28,7 @@ from platform.learning.reflection import (
     ReflectionAgentBackend,
     MockReflectionAgentBackend,
     DirectSubagentReflectionBackend,
+    ReflectionRuntimeBridge,
     SubagentReflectionParser,
 )
 from platform.learning.commit_engine import LearningCommitEngine
@@ -49,6 +51,7 @@ __all__ = [
     "VerificationStatus",
     "MutationDecision",
     "ReflectionContext",
+    "SubagentInvocationRequest",
     "ReflectionProposal",
     "is_untrusted_origin",
     "can_evidence_authorize_learning",
@@ -62,6 +65,7 @@ __all__ = [
     "ReflectionAgentBackend",
     "MockReflectionAgentBackend",
     "DirectSubagentReflectionBackend",
+    "ReflectionRuntimeBridge",
     "SubagentReflectionParser",
     "LearningCommitEngine",
     "SkillBackend",

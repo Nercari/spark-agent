@@ -317,6 +317,19 @@ class ReflectionContext:
 
 
 @dataclass
+class SubagentInvocationRequest:
+    task_run_id: str
+    target_skill: str
+    prompt: str
+    allowed_evidence_ids: List[str]
+    context_digest: str
+    task_title: str = "Reflect on Task Recovery Evidence"
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
 class ReflectionProposal:
     target_skill: str
     decision: MutationDecision
