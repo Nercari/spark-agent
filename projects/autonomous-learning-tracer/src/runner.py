@@ -3,6 +3,7 @@
 import os
 import shutil
 import tempfile
+from typing import Optional
 from platform.learning.contracts import VerificationStatus, MutationDecision
 from platform.learning.evidence_recorder import EvidenceRecorder
 from platform.learning.verifier import OutcomeVerifier
@@ -11,21 +12,35 @@ from platform.learning.reviewer import BackgroundLearningReviewer
 from platform.learning.commit_engine import LearningCommitEngine
 
 
-def run_tracer_cycle(base_dir: str = "/working_dir/c_b490a8c7dd21c813", isolated: bool = True):
+def _resolve_repo_root() -> str:
+    curr = os.path.abspath(os.path.dirname(__file__))
+    while curr and curr != "/":
+        if os.path.exists(os.path.join(curr, "skills", "structured-formatter")):
+            return curr
+        parent = os.path.dirname(curr)
+        if parent == curr:
+            break
+        curr = parent
+    return "/working_dir/c_b490a8c7dd21c813"
+
+
+def run_tracer_cycle(base_dir: Optional[str] = None, isolated: bool = True):
+    root = base_dir or _resolve_repo_root()
     if isolated:
         temp_dir = tempfile.mkdtemp()
         skills_dir = os.path.join(temp_dir, "skills")
         evidence_dir = os.path.join(temp_dir, "evidence")
         audit_log = os.path.join(temp_dir, "audit_log.jsonl")
-        src_skill = os.path.join(base_dir, "skills", "structured-formatter")
+        # Copy structured-formatter skill template
+        src_skill = os.path.join(root, "skills", "structured-formatter")
         dst_skill = os.path.join(skills_dir, "structured-formatter")
         os.makedirs(dst_skill, exist_ok=True)
         shutil.copyfile(os.path.join(src_skill, "SKILL.md"), os.path.join(dst_skill, "SKILL.md"))
     else:
         temp_dir = None
-        skills_dir = os.path.join(base_dir, "skills")
-        evidence_dir = os.path.join(base_dir, "projects", "autonomous-learning-tracer", "artifacts", "evidence")
-        audit_log = os.path.join(base_dir, "projects", "autonomous-learning-tracer", "artifacts", "audit_log.jsonl")
+        skills_dir = os.path.join(root, "skills")
+        evidence_dir = os.path.join(root, "projects", "autonomous-learning-tracer", "artifacts", "evidence")
+        audit_log = os.path.join(root, "projects", "autonomous-learning-tracer", "artifacts", "audit_log.jsonl")
 
     try:
         version_store = SkillVersionStore(base_skills_dir=skills_dir)
@@ -39,6 +54,7 @@ def run_tracer_cycle(base_dir: str = "/working_dir/c_b490a8c7dd21c813", isolated
 
         results = {}
 
+        # Run 1: Task 1 under v1
         rec1 = EvidenceRecorder(
             goal="Format server metrics",
             skill_name=skill_name,
@@ -53,12 +69,14 @@ def run_tracer_cycle(base_dir: str = "/working_dir/c_b490a8c7dd21c813", isolated
         task1 = rec1.complete_task(v1_out)
         results["task1_verification"] = v1_check.status.value
 
+        # Reflection & Commit
         mut1 = reviewer.review_task_run(task1)
         results["reviewer_decision"] = mut1.decision.value
         success, msg, v2 = commit_engine.commit_mutation(mut1)
         results["v2_committed"] = success
         results["v2_version_id"] = v2.version_id if v2 else None
 
+        # Run 2: Task 2 retrieving active v2
         active_v2 = version_store.get_active_version(skill_name)
         rec2 = EvidenceRecorder(
             goal="Format server metrics",
@@ -73,6 +91,7 @@ def run_tracer_cycle(base_dir: str = "/working_dir/c_b490a8c7dd21c813", isolated
         task2 = rec2.complete_task(v2_out)
         results["task2_verification"] = v2_check.status.value
 
+        # Rollback demonstration
         success_v3, _, v3 = version_store.create_new_version(
             skill_name=skill_name,
             base_version_id=v2.version_id,
