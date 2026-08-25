@@ -66,6 +66,8 @@ from platform.curator.contracts import (
     CuratorEvaluationReport,
     CuratorActionRecord,
     CuratorExecutionResult,
+    CuratorRuntimeRollbackRequest,
+    RuntimeRollbackResult,
 )
 from platform.curator.telemetry import LearningTelemetryLedger
 from platform.curator.evaluator import CuratorEvaluator
@@ -158,6 +160,7 @@ class TestPlatformLearning(unittest.TestCase):
             curator=self.curator,
             runtime_adapter=self.fake_runtime,
             allow_synthetic_user_fallback=True,
+            allow_local_fallback=True,
         )
 
     def tearDown(self):
@@ -448,7 +451,7 @@ class TestPlatformLearning(unittest.TestCase):
         self.assertNotEqual(digest1, digest2)
 
     # -------------------------------------------------------------------------
-    # Hardened Declarative Memory & Curator Tests (AU through BY)
+    # Hardened Declarative Memory & Curator Tests (AU through CN)
     # -------------------------------------------------------------------------
 
     def test_au_untrusted_first_memory_creation_blocked(self):
@@ -563,18 +566,18 @@ class TestPlatformLearning(unittest.TestCase):
         """Test AW4: Two supplied stable profile IDs -> USER memory from Profile A is not retrieved for Profile B."""
         self.memory_store.create_or_update_memory(
             scope=MemoryScope.USER,
-            scope_id="profile_1001",
+            scope_id="usr_profile_1001",
             kind=MemoryKind.PREFERENCE,
             key="theme_mode",
             value="dark",
             provenance_evidence_ids=["ev_u1"],
             is_trusted_user_authority=True,
         )
-        mems_a, _ = self.memory_retriever.retrieve(user_scope_id="profile_1001", query_keys=["theme_mode"])
+        mems_a, _ = self.memory_retriever.retrieve(user_scope_id="usr_profile_1001", query_keys=["theme_mode"])
         self.assertEqual(len(mems_a), 1)
         self.assertEqual(mems_a[0].value, "dark")
 
-        mems_b, _ = self.memory_retriever.retrieve(user_scope_id="profile_1002", query_keys=["theme_mode"])
+        mems_b, _ = self.memory_retriever.retrieve(user_scope_id="usr_profile_1002", query_keys=["theme_mode"])
         self.assertEqual(len(mems_b), 0)
 
     def test_ax_external_contradiction_ingestion(self):
@@ -880,7 +883,7 @@ class TestPlatformLearning(unittest.TestCase):
         self.assertEqual(active_before, active_after)
 
     def test_bj_curator_executor_performs_rollback_after_validation(self):
-        """Test BJ: CuratorExecutor.apply_decision() performs deterministic local rollback and updates active version."""
+        """Test BJ: CuratorExecutor.apply_decision() performs deterministic local rollback and updates active version when local fallback is permitted."""
         _, _, v2 = self.version_store.create_new_version(
             skill_name=self.skill_name,
             base_version_id="v1",
@@ -899,22 +902,25 @@ class TestPlatformLearning(unittest.TestCase):
             reason="Verified regression in test execution.",
         )
         executor = CuratorExecutor(version_store=self.version_store, memory_store=self.memory_store, audit_ledger_path=self.curator_audit_log)
-        res = executor.apply_decision(report)
+        res = executor.apply_decision(report, allow_local_fallback=True)
         self.assertTrue(res.applied)
         self.assertEqual(res.active_version_after, "v1")
         self.assertEqual(self.version_store.get_active_version(self.skill_name).version_id, "v1")
 
     def test_bk_automatic_task_lifecycle_records_telemetry(self):
         """Test BK: Automatic task lifecycle observer records telemetry without direct ledger calls."""
+        tid = "tr_bk_auto"
         self.observer.on_task_start(
-            task_run_id="tr_bk_auto",
+            task_run_id=tid,
             skill_name=self.skill_name,
             skill_version="v1",
             task_family="stream_compression",
             project_scope_id="proj_bk",
         )
+        self.observer.on_artifact_used(tid, ArtifactType.SKILL, self.skill_name, "v1", UsageState.TRUE)
 
         recorder = EvidenceRecorder(
+            task_id=tid,
             goal="Process format",
             skill_name=self.skill_name,
             skill_version="v1",
@@ -1005,8 +1011,15 @@ class TestPlatformLearning(unittest.TestCase):
 
     def test_bo_automatic_skill_telemetry_without_direct_ledger_call(self):
         """Test BO: Normal task lifecycle automatically records skill telemetry without direct ledger calls."""
-        self.observer.on_task_start("tr_bo", self.skill_name, "v1", task_family="json_parsing")
-        recorder = EvidenceRecorder(goal="Parse JSON", skill_name=self.skill_name, skill_version="v1", storage_dir=self.evidence_dir)
+        tid = "tr_bo"
+        self.observer.on_task_start(
+            task_run_id=tid,
+            skill_name=self.skill_name,
+            skill_version="v1",
+            task_family="json_parsing",
+        )
+        self.observer.on_artifact_used(tid, ArtifactType.SKILL, self.skill_name, "v1", UsageState.TRUE)
+        recorder = EvidenceRecorder(task_id=tid, goal="Parse JSON", skill_name=self.skill_name, skill_version="v1", storage_dir=self.evidence_dir)
         recorder.record_verification(VerificationStatus.VERIFIED_SUCCESS, "OK")
         tr = recorder.complete_task("Done")
         self.observer.on_task_complete(tr, task_family="json_parsing")
@@ -1025,7 +1038,12 @@ class TestPlatformLearning(unittest.TestCase):
             value=30,
             provenance_evidence_ids=["ev_init"],
         )
-        self.observer.on_task_start("tr_bp", self.skill_name, "v1", project_scope_id="proj_bp")
+        tid = "tr_bp"
+        self.observer.on_task_start(tid, self.skill_name, "v1", project_scope_id="proj_bp")
+        recorder = EvidenceRecorder(task_id=tid, goal="Run task", skill_name=self.skill_name, skill_version="v1", storage_dir=self.evidence_dir, project_scope_id="proj_bp")
+        tr = recorder.complete_task("Done")
+        self.observer.on_task_complete(tr)
+
         telem = self.telemetry_ledger.get_memory_telemetry(mem.id)
         self.assertEqual(telem.retrieval_count, 1)
 
@@ -1040,8 +1058,10 @@ class TestPlatformLearning(unittest.TestCase):
         )
         self.fake_runtime.skills[self.skill_name] = v2.content
 
-        self.observer.on_task_start("tr_bq", self.skill_name, "v2", task_family="stream_compression")
-        recorder = EvidenceRecorder(goal="Run v2", skill_name=self.skill_name, skill_version="v2", storage_dir=self.evidence_dir)
+        tid = "tr_bq"
+        self.observer.on_task_start(tid, self.skill_name, "v2", task_family="stream_compression")
+        self.observer.on_artifact_used(tid, ArtifactType.SKILL, self.skill_name, "v2", UsageState.TRUE)
+        recorder = EvidenceRecorder(task_id=tid, goal="Run v2", skill_name=self.skill_name, skill_version="v2", storage_dir=self.evidence_dir)
         recorder.record_verification(VerificationStatus.VERIFIED_FAILURE, "Failure occurred")
         tr = recorder.complete_task("Failed")
 
@@ -1053,8 +1073,9 @@ class TestPlatformLearning(unittest.TestCase):
 
     def test_br_curator_trigger_skips_unrelated_trivial_task(self):
         """Test BR: Curator trigger does not run on single successful run of baseline v1."""
-        self.observer.on_task_start("tr_br", self.skill_name, "v1")
-        recorder = EvidenceRecorder(goal="Trivial run", skill_name=self.skill_name, skill_version="v1", storage_dir=self.evidence_dir)
+        tid = "tr_br"
+        self.observer.on_task_start(tid, self.skill_name, "v1")
+        recorder = EvidenceRecorder(task_id=tid, goal="Trivial run", skill_name=self.skill_name, skill_version="v1", storage_dir=self.evidence_dir)
         recorder.record_verification(VerificationStatus.VERIFIED_SUCCESS, "OK")
         tr = recorder.complete_task("OK")
 
@@ -1168,17 +1189,21 @@ class TestPlatformLearning(unittest.TestCase):
 
     def test_bw_positive_curator_evidence_from_lifecycle_telemetry(self):
         """Test BW: Positive curator evidence generated only from lifecycle-produced telemetry."""
+        # 1. Historical v1 runs with recovery
         self.telemetry_ledger.record_skill_outcome(
             self.skill_name, "v1", "tr_h1", True, "TRUE", VerificationStatus.VERIFIED_SUCCESS,
             task_family="compression", recovery_required=True
         )
+        # 2. Learn v2
         self.version_store.create_new_version(
             self.skill_name, "v1", self.v1.content_hash, self.initial_content + "\n# v2 good\n", "v2 good"
         )
+        # 3. Lifecycle observer runs 3 direct successes
         for i in range(3):
             tid = f"tr_bw_{i}"
             self.observer.on_task_start(tid, self.skill_name, "v2", task_family="compression")
-            rec = EvidenceRecorder(goal=f"Task {i}", skill_name=self.skill_name, skill_version="v2", storage_dir=self.evidence_dir)
+            self.observer.on_artifact_used(tid, ArtifactType.SKILL, self.skill_name, "v2", UsageState.TRUE)
+            rec = EvidenceRecorder(task_id=tid, goal=f"Task {i}", skill_name=self.skill_name, skill_version="v2", storage_dir=self.evidence_dir)
             rec.record_verification(VerificationStatus.VERIFIED_SUCCESS, "OK")
             tr = rec.complete_task("OK")
             self.observer.on_task_complete(tr, recovery_required=False, task_family="compression")
@@ -1207,14 +1232,359 @@ class TestPlatformLearning(unittest.TestCase):
             telemetry_ledger=FaultyTelemetryLedger(ledger_path=self.telemetry_log),
             curator=self.curator,
             allow_synthetic_user_fallback=True,
+            allow_local_fallback=True,
         )
-        faulty_observer.on_task_start("tr_by", self.skill_name, "v1")
-        recorder = EvidenceRecorder(goal="Task with telemetry fault", skill_name=self.skill_name, skill_version="v1", storage_dir=self.evidence_dir)
+        tid = "tr_by"
+        faulty_observer.on_task_start(tid, self.skill_name, "v1")
+        recorder = EvidenceRecorder(task_id=tid, goal="Task with telemetry fault", skill_name=self.skill_name, skill_version="v1", storage_dir=self.evidence_dir)
         recorder.record_verification(VerificationStatus.VERIFIED_SUCCESS, "OK")
         tr = recorder.complete_task("OK")
 
         res = faulty_observer.on_task_complete(tr)
         self.assertEqual(res["task_run_id"], tr.id)
+
+    # -------------------------------------------------------------------------
+    # New Operational Truth Tests (BZ through CN)
+    # -------------------------------------------------------------------------
+
+    def test_bz_full_positive_comparison_lifecycle_only(self):
+        """Test BZ: Full positive comparison generated strictly through lifecycle observer with zero direct ledger calls."""
+        for i in range(2):
+            tid = f"tr_bz_parent_{i}"
+            self.observer.on_task_start(tid, self.skill_name, "v1", task_family="data_encoding")
+            self.observer.on_artifact_used(tid, ArtifactType.SKILL, self.skill_name, "v1", UsageState.TRUE)
+            rec = EvidenceRecorder(task_id=tid, goal=f"Parent Task {i}", skill_name=self.skill_name, skill_version="v1", storage_dir=self.evidence_dir)
+            rec.record_verification(VerificationStatus.VERIFIED_SUCCESS, "OK with recovery")
+            tr = rec.complete_task("OK")
+            self.observer.on_task_complete(tr, recovery_required=True, task_family="data_encoding")
+
+        _, _, v2 = self.version_store.create_new_version(
+            self.skill_name, "v1", self.v1.content_hash, self.initial_content + "\n# v2 learned encoding\n", "v2 learned encoding"
+        )
+
+        for i in range(3):
+            tid = f"tr_bz_child_{i}"
+            self.observer.on_task_start(tid, self.skill_name, "v2", task_family="data_encoding")
+            self.observer.on_artifact_used(tid, ArtifactType.SKILL, self.skill_name, "v2", UsageState.TRUE)
+            rec = EvidenceRecorder(task_id=tid, goal=f"Child Task {i}", skill_name=self.skill_name, skill_version="v2", storage_dir=self.evidence_dir)
+            rec.record_verification(VerificationStatus.VERIFIED_SUCCESS, "Direct success")
+            tr = rec.complete_task("OK")
+            self.observer.on_task_complete(tr, recovery_required=False, task_family="data_encoding")
+
+        eval_rep = self.curator.evaluate_skill_version(self.skill_name, "v2", task_family="data_encoding")
+        self.assertEqual(eval_rep.decision, CuratorDecision.KEEP)
+        self.assertEqual(eval_rep.observed_effect, ObservedEffect.POSITIVE)
+        self.assertIn("eliminating prior recovery requirements", eval_rep.reason)
+
+    def test_ca_explicit_skill_usage_lifecycle(self):
+        """Test CA: Explicit Skill usage signal updates task-local state to UsageState.TRUE."""
+        tid = "tr_ca"
+        self.observer.on_task_start(tid, self.skill_name, "v1", task_family="test_fam")
+        self.observer.on_artifact_used(tid, ArtifactType.SKILL, self.skill_name, "v1", UsageState.TRUE)
+        rec = EvidenceRecorder(task_id=tid, goal="Run CA", skill_name=self.skill_name, skill_version="v1", storage_dir=self.evidence_dir)
+        rec.record_verification(VerificationStatus.VERIFIED_SUCCESS, "OK")
+        tr = rec.complete_task("OK")
+        self.observer.on_task_complete(tr, task_family="test_fam")
+
+        telem = self.telemetry_ledger.get_skill_telemetry(self.skill_name, "v1", task_family="test_fam")
+        self.assertEqual(telem.use_count, 1)
+        self.assertEqual(telem.unknown_use_count, 0)
+
+    def test_cb_unknown_skill_usage_remains_unknown(self):
+        """Test CB: Unknown Skill usage remains UsageState.UNKNOWN when no explicit usage hook is called."""
+        tid = "tr_cb"
+        self.observer.on_task_start(tid, self.skill_name, "v1", task_family="test_fam")
+        rec = EvidenceRecorder(task_id=tid, goal="Run CB", skill_name=self.skill_name, skill_version="v1", storage_dir=self.evidence_dir)
+        rec.record_verification(VerificationStatus.VERIFIED_SUCCESS, "OK")
+        tr = rec.complete_task("OK")
+        self.observer.on_task_complete(tr, task_family="test_fam")
+
+        telem = self.telemetry_ledger.get_skill_telemetry(self.skill_name, "v1", task_family="test_fam")
+        self.assertEqual(telem.use_count, 0)
+        self.assertEqual(telem.unknown_use_count, 1)
+
+    def test_cc_memory_usage_lifecycle(self):
+        """Test CC: Memory usage lifecycle explicitly tracks memory utilization."""
+        mem, _, _, _ = self.memory_store.create_or_update_memory(
+            scope=MemoryScope.PROJECT,
+            scope_id="proj_cc",
+            kind=MemoryKind.FACT,
+            key="cache_ttl",
+            value=60,
+            provenance_evidence_ids=["ev_cc"],
+        )
+        tid = "tr_cc"
+        self.observer.on_task_start(tid, self.skill_name, "v1", project_scope_id="proj_cc")
+        self.observer.on_artifact_used(tid, ArtifactType.MEMORY, mem.id, None, UsageState.TRUE)
+        rec = EvidenceRecorder(task_id=tid, goal="Run CC", skill_name=self.skill_name, skill_version="v1", storage_dir=self.evidence_dir, project_scope_id="proj_cc")
+        rec.record_verification(VerificationStatus.VERIFIED_SUCCESS, "OK")
+        tr = rec.complete_task("OK")
+        self.observer.on_task_complete(tr)
+
+        telem = self.telemetry_ledger.get_memory_telemetry(mem.id)
+        self.assertEqual(telem.retrieval_count, 1)
+        self.assertEqual(telem.use_count, 1)
+
+    def test_cd_single_retrieval_per_artifact_task(self):
+        """Test CD: A task retrieving one skill records exactly one retrieval event in telemetry aggregation."""
+        tid = "tr_cd"
+        self.observer.on_task_start(tid, self.skill_name, "v1", task_family="single_retrieval")
+        self.observer.on_artifact_used(tid, ArtifactType.SKILL, self.skill_name, "v1", UsageState.TRUE)
+        rec = EvidenceRecorder(task_id=tid, goal="Run CD", skill_name=self.skill_name, skill_version="v1", storage_dir=self.evidence_dir)
+        rec.record_verification(VerificationStatus.VERIFIED_SUCCESS, "OK")
+        tr = rec.complete_task("OK")
+        self.observer.on_task_complete(tr, task_family="single_retrieval")
+
+        telem = self.telemetry_ledger.get_skill_telemetry(self.skill_name, "v1", task_family="single_retrieval")
+        self.assertEqual(telem.retrieval_count, 1)
+
+    def test_ce_task_success_with_unknown_skill_usage_unknown_effect(self):
+        """Test CE: Task success with unknown Skill usage produces ObservedEffect.UNKNOWN."""
+        tid = "tr_ce"
+        self.observer.on_task_start(tid, self.skill_name, "v1", task_family="unknown_effect")
+        rec = EvidenceRecorder(task_id=tid, goal="Run CE", skill_name=self.skill_name, skill_version="v1", storage_dir=self.evidence_dir)
+        rec.record_verification(VerificationStatus.VERIFIED_SUCCESS, "OK")
+        tr = rec.complete_task("OK")
+        self.observer.on_task_complete(tr, task_family="unknown_effect")
+
+        records = self.telemetry_ledger.get_all_records()
+        sk_rec = [r for r in records if r.task_run_id == "tr_ce" and r.artifact_type == ArtifactType.SKILL][0]
+        self.assertEqual(sk_rec.used, "UNKNOWN")
+        self.assertEqual(sk_rec.observed_effect, ObservedEffect.UNKNOWN)
+
+    def test_cf_repeated_memory_conflict_triggers_evaluator(self):
+        """Test CF: Ingesting repeated external contradictions automatically triggers memory evaluation and marks STALE."""
+        mem, _, _, _ = self.memory_store.create_or_update_memory(
+            scope=MemoryScope.PROJECT,
+            scope_id="proj_cf",
+            kind=MemoryKind.FACT,
+            key="canonical_export_format",
+            value="json",
+            provenance_evidence_ids=["ev_user"],
+            is_trusted_user_authority=True,
+        )
+
+        for i in range(3):
+            tid = f"tr_cf_{i}"
+            self.observer.on_task_start(tid, self.skill_name, "v1", project_scope_id="proj_cf")
+            rec = EvidenceRecorder(task_id=tid, goal=f"External {i}", skill_name=self.skill_name, skill_version="v1", storage_dir=self.evidence_dir, project_scope_id="proj_cf")
+            rec.record_external_content(f"https://doc.com/{i}", "For this project, the export format is xml.")
+            tr = rec.complete_task("OK")
+            res = self.observer.on_task_complete(tr)
+
+        mem_updated = self.memory_store.get_memory(mem.id)
+        self.assertIsNotNone(mem_updated)
+        self.assertEqual(mem_updated.value, "json")  # Trusted value never overwritten!
+        self.assertEqual(mem_updated.status, MemoryStatus.STALE)  # Automatically marked STALE!
+        self.assertEqual(len(mem_updated.metadata.get("candidate_conflicts", [])), 3)
+
+        eval_report = self.curator.evaluate_memory_record(mem.id)
+        self.assertEqual(eval_report.decision, CuratorDecision.MARK_STALE)
+        self.assertEqual(eval_report.suggested_action, "REQUEST_REVALIDATION")
+
+    def test_cg_memory_trigger_routes_to_evaluate_memory_record(self):
+        """Test CG: Memory trigger routes to evaluate_memory_record and not evaluate_skill_version."""
+        mem, _, _, _ = self.memory_store.create_or_update_memory(
+            scope=MemoryScope.PROJECT,
+            scope_id="proj_cg",
+            kind=MemoryKind.FACT,
+            key="db_port",
+            value=5432,
+            provenance_evidence_ids=["ev_init"],
+            is_trusted_user_authority=True,
+        )
+        eval_report = self.curator.evaluate_memory_record(mem.id)
+        self.assertEqual(eval_report.artifact_type, ArtifactType.MEMORY)
+        self.assertEqual(eval_report.artifact_id, mem.id)
+
+    def test_ch_external_conflicts_never_mutate_trusted_value(self):
+        """Test CH: External conflicts never mutate trusted active value."""
+        mem, _, _, _ = self.memory_store.create_or_update_memory(
+            scope=MemoryScope.PROJECT,
+            scope_id="proj_ch",
+            kind=MemoryKind.FACT,
+            key="target_env",
+            value="production",
+            provenance_evidence_ids=["ev_u"],
+            is_trusted_user_authority=True,
+        )
+        self.memory_store.handle_external_conflict(
+            scope=MemoryScope.PROJECT,
+            scope_id="proj_ch",
+            key="target_env",
+            external_value="staging",
+            source_evidence_id="ev_ext",
+            source_ref="https://wiki.com",
+        )
+        recs = self.memory_store.retrieve_memories(scope=MemoryScope.PROJECT, scope_id="proj_ch", key="target_env", status=MemoryStatus.ACTIVE)
+        self.assertEqual(recs[0].value, "production")
+        self.assertEqual(recs[0].metadata["candidate_conflicts"][0]["conflicting_value"], "staging")
+
+    def test_ci_runtime_managed_rollback_without_adapter_fails_closed(self):
+        """Test CI: Runtime-managed Skill rollback without runtime adapter fails closed."""
+        _, _, v2 = self.version_store.create_new_version(
+            skill_name=self.skill_name,
+            base_version_id="v1",
+            base_version_hash=self.v1.content_hash,
+            new_content=self.initial_content + "\n# v2 broken\n",
+            change_reason="v2 broken",
+        )
+        report = CuratorEvaluationReport(
+            artifact_type=ArtifactType.SKILL,
+            artifact_id=self.skill_name,
+            version_or_record_id="v2",
+            decision=CuratorDecision.RETIRE_SKILL_VERSION,
+            observed_effect=ObservedEffect.NEGATIVE,
+            reason="Regression detected.",
+        )
+        executor = CuratorExecutor(self.version_store, self.memory_store, audit_ledger_path=self.curator_audit_log)
+        res = executor.apply_decision(report, runtime_adapter=None, allow_local_fallback=False)
+        self.assertFalse(res.applied)
+        self.assertIn("Runtime adapter required", res.message)
+        self.assertEqual(self.version_store.get_active_version(self.skill_name).version_id, "v2")
+
+    def test_cj_local_skill_opts_into_local_rollback(self):
+        """Test CJ: Local/test-only Skill can explicitly opt into local rollback when allow_local_fallback=True."""
+        _, _, v2 = self.version_store.create_new_version(
+            skill_name=self.skill_name,
+            base_version_id="v1",
+            base_version_hash=self.v1.content_hash,
+            new_content=self.initial_content + "\n# v2\n",
+            change_reason="v2",
+        )
+        report = CuratorEvaluationReport(
+            artifact_type=ArtifactType.SKILL,
+            artifact_id=self.skill_name,
+            version_or_record_id="v2",
+            decision=CuratorDecision.RETIRE_SKILL_VERSION,
+            observed_effect=ObservedEffect.NEGATIVE,
+            reason="Regression test.",
+        )
+        executor = CuratorExecutor(self.version_store, self.memory_store, audit_ledger_path=self.curator_audit_log)
+        res = executor.apply_decision(report, runtime_adapter=None, allow_local_fallback=True)
+        self.assertTrue(res.applied)
+        self.assertEqual(res.active_version_after, "v1")
+        self.assertEqual(self.version_store.get_active_version(self.skill_name).version_id, "v1")
+
+    def test_ck_runtime_rollback_request_integrity(self):
+        """Test CK: Runtime rollback request contains evaluated version/hash and parent target hash."""
+        _, _, v2 = self.version_store.create_new_version(
+            skill_name=self.skill_name,
+            base_version_id="v1",
+            base_version_hash=self.v1.content_hash,
+            new_content=self.initial_content + "\n# v2\n",
+            change_reason="v2",
+        )
+        req = CuratorRuntimeRollbackRequest(
+            action_id="act_test_123",
+            task_run_id="tr_test_123",
+            skill_name=self.skill_name,
+            evaluated_version="v2",
+            expected_runtime_hash=v2.content_hash,
+            rollback_target_version="v1",
+            target_content=self.initial_content,
+            target_hash=self.v1.content_hash,
+        )
+        self.assertEqual(req.evaluated_version, "v2")
+        self.assertEqual(req.expected_runtime_hash, v2.content_hash)
+        self.assertEqual(req.target_hash, self.v1.content_hash)
+
+    def test_cl_runtime_result_wrong_before_hash_rejected(self):
+        """Test CL: consume_runtime_result rejects result with stale before hash."""
+        _, _, v2 = self.version_store.create_new_version(
+            skill_name=self.skill_name,
+            base_version_id="v1",
+            base_version_hash=self.v1.content_hash,
+            new_content=self.initial_content + "\n# v2\n",
+            change_reason="v2",
+        )
+        req = CuratorRuntimeRollbackRequest(
+            action_id="act_test_cl",
+            task_run_id="tr_test_cl",
+            skill_name=self.skill_name,
+            evaluated_version="v2",
+            expected_runtime_hash=v2.content_hash,
+            rollback_target_version="v1",
+            target_content=self.initial_content,
+            target_hash=self.v1.content_hash,
+        )
+        res = RuntimeRollbackResult(
+            action_id="act_test_cl",
+            skill_name=self.skill_name,
+            status="SUCCESS",
+            observed_before_hash="wrong_stale_hash",
+            observed_after_hash=self.v1.content_hash,
+            message="Simulated result",
+        )
+        executor = CuratorExecutor(self.version_store, self.memory_store, audit_ledger_path=self.curator_audit_log)
+        exec_res = executor.consume_runtime_result(req, res)
+        self.assertFalse(exec_res.applied)
+        self.assertIn("Stale curator action", exec_res.message)
+
+    def test_cm_runtime_result_wrong_after_hash_rejected(self):
+        """Test CM: consume_runtime_result rejects result with mismatched read-back hash."""
+        _, _, v2 = self.version_store.create_new_version(
+            skill_name=self.skill_name,
+            base_version_id="v1",
+            base_version_hash=self.v1.content_hash,
+            new_content=self.initial_content + "\n# v2\n",
+            change_reason="v2",
+        )
+        req = CuratorRuntimeRollbackRequest(
+            action_id="act_test_cm",
+            task_run_id="tr_test_cm",
+            skill_name=self.skill_name,
+            evaluated_version="v2",
+            expected_runtime_hash=v2.content_hash,
+            rollback_target_version="v1",
+            target_content=self.initial_content,
+            target_hash=self.v1.content_hash,
+        )
+        res = RuntimeRollbackResult(
+            action_id="act_test_cm",
+            skill_name=self.skill_name,
+            status="SUCCESS",
+            observed_before_hash=v2.content_hash,
+            observed_after_hash="tampered_after_hash",
+            message="Simulated result",
+        )
+        executor = CuratorExecutor(self.version_store, self.memory_store, audit_ledger_path=self.curator_audit_log)
+        exec_res = executor.consume_runtime_result(req, res)
+        self.assertFalse(exec_res.applied)
+        self.assertIn("Read-back verification mismatch", exec_res.message)
+
+    def test_cn_valid_runtime_result_finalizes_local_rollback(self):
+        """Test CN: Valid runtime result finalizes local rollback exactly once."""
+        _, _, v2 = self.version_store.create_new_version(
+            skill_name=self.skill_name,
+            base_version_id="v1",
+            base_version_hash=self.v1.content_hash,
+            new_content=self.initial_content + "\n# v2\n",
+            change_reason="v2",
+        )
+        req = CuratorRuntimeRollbackRequest(
+            action_id="act_test_cn",
+            task_run_id="tr_test_cn",
+            skill_name=self.skill_name,
+            evaluated_version="v2",
+            expected_runtime_hash=v2.content_hash,
+            rollback_target_version="v1",
+            target_content=self.initial_content,
+            target_hash=self.v1.content_hash,
+        )
+        res = RuntimeRollbackResult(
+            action_id="act_test_cn",
+            skill_name=self.skill_name,
+            status="SUCCESS",
+            observed_before_hash=v2.content_hash,
+            observed_after_hash=self.v1.content_hash,
+            message="Runtime rollback verified",
+        )
+        executor = CuratorExecutor(self.version_store, self.memory_store, audit_ledger_path=self.curator_audit_log)
+        exec_res = executor.consume_runtime_result(req, res)
+        self.assertTrue(exec_res.applied)
+        self.assertEqual(exec_res.active_version_after, "v1")
+        self.assertEqual(self.version_store.get_active_version(self.skill_name).version_id, "v1")
 
 
 if __name__ == "__main__":
