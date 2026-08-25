@@ -2,6 +2,7 @@
 
 import difflib
 import hashlib
+import json
 import re
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
@@ -16,6 +17,8 @@ class EventType(str, Enum):
     EXTERNAL_CONTENT = "EXTERNAL_CONTENT"
     MODEL_INFERENCE = "MODEL_INFERENCE"
     VERIFICATION_RESULT = "VERIFICATION_RESULT"
+    SUBAGENT_INVOCATION = "SUBAGENT_INVOCATION"
+    SUBAGENT_RESULT = "SUBAGENT_RESULT"
 
 
 class TrustClass(str, Enum):
@@ -122,7 +125,16 @@ class VerificationStatus(str, Enum):
     UNKNOWN = "UNKNOWN"
 
 
+class ReflectionDecision(str, Enum):
+    """Proposals that a reflection subagent can emit (model cannot emit AUTO_COMMIT)."""
+    NO_LEARNING = "NO_LEARNING"
+    SKILL_PATCH = "SKILL_PATCH"
+    MEMORY_CREATE = "MEMORY_CREATE"
+    MEMORY_UPDATE = "MEMORY_UPDATE"
+
+
 class MutationDecision(str, Enum):
+    """Persistence decisions made strictly by deterministic policy."""
     AUTO_COMMIT = "AUTO_COMMIT"
     REJECT_STALE = "REJECT_STALE"
     BLOCKED_PERMISSION = "BLOCKED_PERMISSION"
@@ -154,6 +166,11 @@ class EvidenceEvent:
         d["trust_class"] = self.trust_class.value
         d["payload_origin"] = self.payload_origin.value
         return d
+
+    def content_digest(self) -> str:
+        """Computes deterministic digest for evidence content & metadata."""
+        canonical_str = f"{self.id}:{self.event_type.value}:{self.trust_class.value}:{self.payload_origin.value}:{self.content}:{json.dumps(self.metadata, sort_keys=True)}"
+        return generate_sha256(canonical_str)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "EvidenceEvent":
@@ -310,6 +327,23 @@ class ReflectionContext:
     verification_status: str
     verification_details: Dict[str, Any] = field(default_factory=dict)
 
+    def compute_canonical_digest(self) -> str:
+        """Computes canonical digest binding the exact evidence package sent."""
+        skill_content_hash = generate_sha256(self.skill_content)
+        sorted_ev = sorted(self.relevant_evidence, key=lambda e: e.id)
+        ev_digests = [e.content_digest() for e in sorted_ev]
+        canonical_package = {
+            "task_run_id": self.task_run_id,
+            "goal": self.goal,
+            "target_skill": self.target_skill,
+            "active_skill_version": self.active_skill_version,
+            "skill_content_hash": skill_content_hash,
+            "verification_status": self.verification_status,
+            "evidence_ids": [e.id for e in sorted_ev],
+            "evidence_digests": ev_digests,
+        }
+        return generate_sha256(json.dumps(canonical_package, sort_keys=True))
+
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
         d["relevant_evidence"] = [e.to_dict() for e in self.relevant_evidence]
@@ -324,6 +358,21 @@ class SubagentInvocationRequest:
     allowed_evidence_ids: List[str]
     context_digest: str
     task_title: str = "Reflect on Task Recovery Evidence"
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class SubagentAuditRecord:
+    invocation_id: str
+    task_run_id: str
+    target_skill: str
+    context_digest: str
+    completion_status: str
+    returned_evidence_ids: List[str]
+    parser_result: str
+    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

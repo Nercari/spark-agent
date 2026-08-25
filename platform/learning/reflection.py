@@ -1,5 +1,4 @@
-"""Hermes Reflection Engine: Fast-Path Deterministic Analysis & Semantic Subagent Reflection."""
-
+import os
 import abc
 import json
 import math
@@ -17,6 +16,7 @@ from platform.learning.contracts import (
     MutationDecision,
     ReflectionContext,
     SubagentInvocationRequest,
+    SubagentAuditRecord,
     ReflectionProposal,
     is_untrusted_origin,
     can_evidence_authorize_learning,
@@ -60,14 +60,23 @@ class SubagentReflectionParser:
             )
 
         raw_decision = data.get("decision", "NO_LEARNING")
-        if raw_decision not in {"NO_LEARNING", "SKILL_PATCH", "AUTO_COMMIT"}:
+        
+        # Part A1 & Test AD: Model cannot emit AUTO_COMMIT. If it attempts to do so, reject as invalid proposal.
+        if raw_decision == "AUTO_COMMIT":
+            return ReflectionProposal(
+                target_skill=target_skill,
+                decision=MutationDecision.NO_LEARNING,
+                reason="Model cannot emit AUTO_COMMIT; decision must be NO_LEARNING or SKILL_PATCH. Proposal rejected.",
+            )
+
+        if raw_decision not in {"NO_LEARNING", "SKILL_PATCH", "MEMORY_CREATE", "MEMORY_UPDATE"}:
             return ReflectionProposal(
                 target_skill=target_skill,
                 decision=MutationDecision.NO_LEARNING,
                 reason=f"Invalid decision '{raw_decision}' in reflection proposal.",
             )
 
-        decision = MutationDecision.AUTO_COMMIT if raw_decision in {"SKILL_PATCH", "AUTO_COMMIT"} else MutationDecision.NO_LEARNING
+        decision = MutationDecision.AUTO_COMMIT if raw_decision in {"SKILL_PATCH", "MEMORY_CREATE", "MEMORY_UPDATE"} else MutationDecision.NO_LEARNING
         reason = data.get("reason", "Semantic reflection analysis.")
         cited_evidence_ids = data.get("evidence_ids", [])
         proposed_lesson = data.get("proposed_procedural_lesson", "").strip()
@@ -101,7 +110,7 @@ class SubagentReflectionParser:
             return ReflectionProposal(
                 target_skill=target_skill,
                 decision=MutationDecision.NO_LEARNING,
-                reason="Subagent proposed SKILL_PATCH but provided empty procedural lesson.",
+                reason="Subagent proposed modification but provided empty procedural lesson.",
             )
 
         return ReflectionProposal(
@@ -119,10 +128,14 @@ class SubagentReflectionParser:
 class ReflectionRuntimeBridge:
     """Production runtime bridge translating between TaskRun context and Spark's isolated subagent."""
 
+    def __init__(self, audit_log_path: Optional[str] = None):
+        self.audit_log_path = audit_log_path or "/working_dir/c_b490a8c7dd21c813/.learning/audit/subagent_invocations.jsonl"
+        os.makedirs(os.path.dirname(self.audit_log_path), exist_ok=True)
+
     def prepare_request(self, context: ReflectionContext) -> SubagentInvocationRequest:
-        """Constructs an explicit, bounded SubagentInvocationRequest."""
+        """Constructs an explicit, bounded SubagentInvocationRequest with canonical digest."""
         allowed_ids = [e.id for e in context.relevant_evidence]
-        digest = generate_sha256(f"{context.task_run_id}:{context.target_skill}:{len(allowed_ids)}:{context.goal}")
+        digest = context.compute_canonical_digest()
 
         evidence_lines = []
         for ev in context.relevant_evidence:
@@ -174,7 +187,7 @@ class ReflectionRuntimeBridge:
         )
 
     def consume_response(self, raw_response: str, context: ReflectionContext) -> ReflectionProposal:
-        """Consumes raw subagent response, parses structured proposal, and enforces deterministic verification."""
+        """Consumes raw subagent response and enforces strict causality on cited evidence IDs."""
         valid_ids = {e.id for e in context.relevant_evidence}
         proposal = SubagentReflectionParser.parse_proposal(
             raw_output=raw_response,
@@ -182,9 +195,22 @@ class ReflectionRuntimeBridge:
             valid_evidence_ids=valid_ids,
         )
 
+        # Audit recording
+        audit_rec = SubagentAuditRecord(
+            invocation_id=f"inv_{uuid.uuid4().hex[:8]}",
+            task_run_id=context.task_run_id,
+            target_skill=context.target_skill,
+            context_digest=context.compute_canonical_digest(),
+            completion_status="SUCCESS" if proposal.decision != MutationDecision.NO_LEARNING else "NO_LEARNING",
+            returned_evidence_ids=proposal.evidence_ids,
+            parser_result=proposal.reason,
+        )
+        self._record_audit(audit_rec)
+
         if proposal.decision != MutationDecision.AUTO_COMMIT:
             return proposal
 
+        # Part A2 & Test AE: Causality MUST come strictly from the evidence IDs ACTUALLY cited!
         if context.verification_status != VerificationStatus.VERIFIED_SUCCESS.value:
             proposal.decision = MutationDecision.NO_LEARNING
             proposal.recovery_verified = False
@@ -192,22 +218,20 @@ class ReflectionRuntimeBridge:
             return proposal
 
         cited_events = [e for e in context.relevant_evidence if e.id in proposal.evidence_ids]
-        error_events = [e for e in cited_events if e.metadata.get("is_error", False)]
-        recovery_events = [e for e in cited_events if e.metadata.get("is_recovery", False)]
+        cited_errors = [e for e in cited_events if e.metadata.get("is_error", False)]
+        cited_recoveries = [e for e in cited_events if e.metadata.get("is_recovery", False)]
 
-        if not error_events or not recovery_events:
-            all_errors = [e for e in context.relevant_evidence if e.metadata.get("is_error", False)]
-            all_recoveries = [e for e in context.relevant_evidence if e.metadata.get("is_recovery", False)]
-            if not all_errors or not all_recoveries:
-                proposal.decision = MutationDecision.NO_LEARNING
-                proposal.recovery_verified = False
-                proposal.reason = "Deterministic verification failed: Cited evidence lacks linked failure and recovery events."
-                return proposal
+        if not cited_errors or not cited_recoveries:
+            proposal.decision = MutationDecision.NO_LEARNING
+            proposal.recovery_verified = False
+            proposal.reason = "Deterministic verification failed: Cited evidence IDs do not establish both failure and recovery events."
+            return proposal
 
+        # Verify operation linkage between cited failure and cited recovery
         linked = False
-        for err in error_events or [e for e in context.relevant_evidence if e.metadata.get("is_error", False)]:
+        for err in cited_errors:
             err_op = err.operation_id or err.metadata.get("operation_id")
-            for rec in recovery_events or [e for e in context.relevant_evidence if e.metadata.get("is_recovery", False)]:
+            for rec in cited_recoveries:
                 rec_op = rec.operation_id or rec.metadata.get("operation_id")
                 rec_parent = rec.parent_attempt_id or rec.metadata.get("parent_attempt_id")
                 if (err_op and rec_op and err_op == rec_op) or (rec_parent and rec_parent == str(err.attempt_id)):
@@ -219,11 +243,18 @@ class ReflectionRuntimeBridge:
         if not linked:
             proposal.decision = MutationDecision.NO_LEARNING
             proposal.recovery_verified = False
-            proposal.reason = "Deterministic verification failed: Failure and recovery belong to unlinked operations."
+            proposal.reason = "Deterministic verification failed: Cited failure and recovery belong to unlinked operations."
             return proposal
 
         proposal.recovery_verified = True
         return proposal
+
+    def _record_audit(self, audit_record: SubagentAuditRecord):
+        try:
+            with open(self.audit_log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(audit_record.to_dict()) + "\n")
+        except Exception:
+            pass
 
 
 class ReflectionAgentBackend(abc.ABC):
@@ -471,4 +502,3 @@ class HermesReflectionEngine:
 
 
 HermesSemanticReflectionSubagent = DirectSubagentReflectionBackend
-EOF
