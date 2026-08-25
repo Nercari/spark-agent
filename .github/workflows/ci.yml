@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Check for accidental EOF sentinels
+        run: |
+          if grep -RIn --include='*.py' -E '^[[:space:]]*EOF[[:space:]]*$' .; then
+            echo "Error: Standalone EOF sentinel found in Python source."
+            exit 1
+          fi
+      - name: Compile all Python source
+        run: python3 -m compileall -q platform projects tests
+      - name: Run platform test suite
+        run: python3 -m unittest discover -s tests -v
+      - name: Run autonomous learning tracer tests
+        run: python3 -m unittest discover -s projects/autonomous-learning-tracer/tests -v
+      - name: Run memory tracer tests
+        run: python3 -m unittest discover -s projects/memory-tracer/tests -v

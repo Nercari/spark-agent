@@ -1,7 +1,8 @@
-"""Telemetry and Outcome Ledger for Measurable Learning Improvement."""
+"""Telemetry and Outcome Ledger for Measurable Learning Improvement (SQLite Persistence & Concurrency Safe)."""
 
 import os
 import json
+import sqlite3
 from typing import Any, Dict, List, Optional
 from platform.learning.contracts import VerificationStatus
 from platform.memory.contracts import MemoryScope
@@ -16,12 +17,50 @@ from platform.curator.contracts import (
 
 
 class LearningTelemetryLedger:
-    """Records and aggregates operational telemetry for learned Skills and Memories."""
+    """Records and aggregates operational telemetry for learned Skills and Memories with SQLite concurrency safety."""
 
-    def __init__(self, ledger_path: Optional[str] = None):
-        default_path = os.path.expanduser("~/.spark/curator/telemetry.jsonl")
-        self.ledger_path = ledger_path or default_path
-        os.makedirs(os.path.dirname(self.ledger_path), exist_ok=True)
+    def __init__(self, db_path: Optional[str] = None, ledger_path: Optional[str] = None):
+        target = db_path or ledger_path
+        if target:
+            if target.endswith(".jsonl"):
+                self.db_path = target[:-6] + ".sqlite3"
+            else:
+                self.db_path = target
+        else:
+            self.db_path = os.path.expanduser("~/.spark/curator/telemetry.sqlite3")
+
+        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+        self._init_db()
+
+    def _get_connection(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(self.db_path, timeout=10.0)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA busy_timeout=5000;")
+        return conn
+
+    def _init_db(self):
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS learning_outcomes (
+                    artifact_type TEXT NOT NULL,
+                    artifact_id TEXT NOT NULL,
+                    version_or_record_id TEXT NOT NULL,
+                    task_run_id TEXT NOT NULL,
+                    retrieved INTEGER NOT NULL,
+                    used TEXT NOT NULL,
+                    task_family TEXT NOT NULL,
+                    verification_status TEXT NOT NULL,
+                    recovery_required INTEGER NOT NULL,
+                    observed_effect TEXT NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    metadata TEXT NOT NULL,
+                    PRIMARY KEY (artifact_type, artifact_id, task_run_id)
+                );
+                """
+            )
+            conn.commit()
 
     def record_skill_outcome(
         self,
@@ -93,31 +132,63 @@ class LearningTelemetryLedger:
         return rec
 
     def _save_record(self, record: LearningOutcomeRecord):
-        records = self.get_all_records()
-        updated = False
-        for i, r in enumerate(records):
-            if (r.artifact_type == record.artifact_type and
-                r.artifact_id == record.artifact_id and
-                r.task_run_id == record.task_run_id):
-                records[i] = record
-                updated = True
-                break
-        if not updated:
-            records.append(record)
-
-        with open(self.ledger_path, "w", encoding="utf-8") as f:
-            for r in records:
-                f.write(json.dumps(r.to_dict()) + "\n")
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO learning_outcomes (
+                    artifact_type, artifact_id, version_or_record_id, task_run_id,
+                    retrieved, used, task_family, verification_status, recovery_required,
+                    observed_effect, timestamp, metadata
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(artifact_type, artifact_id, task_run_id) DO UPDATE SET
+                    version_or_record_id=excluded.version_or_record_id,
+                    retrieved=excluded.retrieved,
+                    used=excluded.used,
+                    task_family=excluded.task_family,
+                    verification_status=excluded.verification_status,
+                    recovery_required=excluded.recovery_required,
+                    observed_effect=excluded.observed_effect,
+                    timestamp=excluded.timestamp,
+                    metadata=excluded.metadata;
+                """,
+                (
+                    record.artifact_type.value,
+                    record.artifact_id,
+                    record.version_or_record_id,
+                    record.task_run_id,
+                    1 if record.retrieved else 0,
+                    record.used,
+                    record.task_family,
+                    record.verification_status.value,
+                    1 if record.recovery_required else 0,
+                    record.observed_effect.value,
+                    record.timestamp,
+                    json.dumps(record.metadata),
+                ),
+            )
+            conn.commit()
 
     def get_all_records(self) -> List[LearningOutcomeRecord]:
-        if not os.path.exists(self.ledger_path):
-            return []
         records = []
-        with open(self.ledger_path, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if line:
-                    records.append(LearningOutcomeRecord.from_dict(json.loads(line)))
+        with self._get_connection() as conn:
+            cur = conn.execute("SELECT * FROM learning_outcomes ORDER BY timestamp ASC;")
+            for row in cur.fetchall():
+                records.append(
+                    LearningOutcomeRecord(
+                        artifact_type=ArtifactType(row["artifact_type"]),
+                        artifact_id=row["artifact_id"],
+                        version_or_record_id=row["version_or_record_id"],
+                        task_run_id=row["task_run_id"],
+                        retrieved=bool(row["retrieved"]),
+                        used=row["used"],
+                        task_family=row["task_family"],
+                        verification_status=VerificationStatus(row["verification_status"]),
+                        recovery_required=bool(row["recovery_required"]),
+                        observed_effect=ObservedEffect(row["observed_effect"]),
+                        timestamp=row["timestamp"],
+                        metadata=json.loads(row["metadata"]),
+                    )
+                )
         return records
 
     def get_skill_telemetry(self, skill_name: str, skill_version: str, task_family: Optional[str] = None) -> SkillTelemetry:
@@ -167,4 +238,3 @@ class LearningTelemetryLedger:
                     telemetry.correction_count += 1
 
         return telemetry
-EOF

@@ -157,18 +157,26 @@ class CuratorRuntimeRollbackRequest:
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "CuratorRuntimeRollbackRequest":
+        return cls(**data)
+
 
 @dataclass
 class RuntimeRollbackResult:
     action_id: str
     skill_name: str
-    status: str  # SUCCESS | STALE_HASH_MISMATCH | READBACK_MISMATCH | UPDATE_FAILED
+    status: str  # SUCCESS | STALE_HASH_MISMATCH | READBACK_MISMATCH | UPDATE_FAILED | ACTION_ID_MISMATCH
     observed_before_hash: Optional[str] = None
     observed_after_hash: Optional[str] = None
     message: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "RuntimeRollbackResult":
+        return cls(**data)
 
 
 @dataclass
@@ -178,7 +186,7 @@ class CuratorActionRecord:
     artifact_id: str
     evaluated_version: str
     decision: CuratorDecision
-    execution_status: str  # APPLIED | REJECTED_STALE | FAILED | NO_ACTION
+    execution_status: str  # PENDING_RUNTIME_ACTION | APPLIED | REJECTED_STALE | FAILED | NO_ACTION
     runtime_before_hash: Optional[str] = None
     runtime_after_hash: Optional[str] = None
     rollback_target: Optional[str] = None
@@ -206,6 +214,16 @@ class CuratorExecutionResult:
     active_version_after: Optional[str] = None
     active_memory_status_after: Optional[str] = None
     action_record: Optional[CuratorActionRecord] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "decision": self.decision.value,
+            "applied": self.applied,
+            "message": self.message,
+            "active_version_after": self.active_version_after,
+            "active_memory_status_after": self.active_memory_status_after,
+            "action_record": self.action_record.to_dict() if self.action_record else None,
+        }
 
 
 @dataclass
@@ -248,4 +266,3 @@ class LearningHealthReport:
             "evaluations": [e.to_dict() for e in self.evaluations],
             "actions": [a.to_dict() for a in self.actions],
         }
-EOF

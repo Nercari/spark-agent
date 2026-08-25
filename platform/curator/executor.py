@@ -4,7 +4,7 @@ import os
 import json
 import uuid
 from datetime import datetime, timezone
-from typing import Optional, Protocol, Any, List
+from typing import Optional, Protocol, Any, List, Tuple
 from platform.learning.version_store import SkillVersionStore
 from platform.learning.contracts import generate_sha256
 from platform.memory.store import MemoryStore
@@ -61,6 +61,100 @@ class CuratorExecutor:
                 if line:
                     records.append(CuratorActionRecord.from_dict(json.loads(line)))
         return records
+
+    def prepare_runtime_rollback_request(
+        self,
+        report: CuratorEvaluationReport,
+        task_run_id: str = "curator_lifecycle_task",
+    ) -> Tuple[Optional[CuratorRuntimeRollbackRequest], CuratorExecutionResult]:
+        """Prepares an authoritative runtime rollback request contract without mutating local state."""
+        action_id = f"act_{uuid.uuid4().hex[:8]}"
+        audit_trail = ["REQUEST_PREPARED"]
+
+        if report.decision != CuratorDecision.RETIRE_SKILL_VERSION:
+            return None, CuratorExecutionResult(
+                decision=report.decision,
+                applied=False,
+                message="Cannot prepare rollback: decision is not RETIRE_SKILL_VERSION.",
+            )
+
+        active_ver = self.version_store.get_active_version(report.artifact_id)
+        if not active_ver:
+            action = CuratorActionRecord(
+                action_id=action_id,
+                task_run_id=task_run_id,
+                artifact_id=report.artifact_id,
+                evaluated_version=report.version_or_record_id,
+                decision=report.decision,
+                execution_status="FAILED",
+                details=f"Cannot prepare rollback: active version for '{report.artifact_id}' not found.",
+                audit_trail=audit_trail,
+            )
+            self._record_action(action)
+            return None, CuratorExecutionResult(decision=report.decision, applied=False, message=action.details, action_record=action)
+
+        parent_id = active_ver.parent_version_id
+        if not parent_id:
+            action = CuratorActionRecord(
+                action_id=action_id,
+                task_run_id=task_run_id,
+                artifact_id=report.artifact_id,
+                evaluated_version=report.version_or_record_id,
+                decision=report.decision,
+                execution_status="FAILED",
+                details=f"Cannot prepare rollback: baseline version {active_ver.version_id} has no parent.",
+                audit_trail=audit_trail,
+            )
+            self._record_action(action)
+            return None, CuratorExecutionResult(decision=report.decision, applied=False, message=action.details, action_record=action)
+
+        parent_ver = self.version_store.get_version(report.artifact_id, parent_id)
+        if not parent_ver:
+            action = CuratorActionRecord(
+                action_id=action_id,
+                task_run_id=task_run_id,
+                artifact_id=report.artifact_id,
+                evaluated_version=report.version_or_record_id,
+                decision=report.decision,
+                execution_status="FAILED",
+                details=f"Cannot prepare rollback: parent version '{parent_id}' missing.",
+                audit_trail=audit_trail,
+            )
+            self._record_action(action)
+            return None, CuratorExecutionResult(decision=report.decision, applied=False, message=action.details, action_record=action)
+
+        req = CuratorRuntimeRollbackRequest(
+            action_id=action_id,
+            task_run_id=task_run_id,
+            skill_name=report.artifact_id,
+            evaluated_version=report.version_or_record_id,
+            expected_runtime_hash=active_ver.content_hash,
+            rollback_target_version=parent_id,
+            target_content=parent_ver.content,
+            target_hash=parent_ver.content_hash,
+        )
+
+        action = CuratorActionRecord(
+            action_id=action_id,
+            task_run_id=task_run_id,
+            artifact_id=report.artifact_id,
+            evaluated_version=report.version_or_record_id,
+            decision=report.decision,
+            execution_status="PENDING_RUNTIME_ACTION",
+            runtime_before_hash=active_ver.content_hash,
+            runtime_after_hash=parent_ver.content_hash,
+            rollback_target=parent_id,
+            details="Rollback request prepared; pending host runtime execution.",
+            audit_trail=audit_trail,
+        )
+        self._record_action(action)
+
+        return req, CuratorExecutionResult(
+            decision=report.decision,
+            applied=False,
+            message="Runtime rollback request prepared; pending host execution.",
+            action_record=action,
+        )
 
     def apply_decision(
         self,
@@ -136,23 +230,9 @@ class CuratorExecutor:
                 )
 
             if runtime_adapter is None and not allow_local_fallback:
-                action = CuratorActionRecord(
-                    action_id=action_id,
-                    task_run_id=task_run_id,
-                    artifact_id=report.artifact_id,
-                    evaluated_version=report.version_or_record_id,
-                    decision=report.decision,
-                    execution_status="FAILED",
-                    details="Runtime adapter required for runtime-managed skill rollback; local mutation blocked.",
-                    audit_trail=audit_trail,
-                )
-                self._record_action(action)
-                return CuratorExecutionResult(
-                    decision=report.decision,
-                    applied=False,
-                    message=action.details,
-                    action_record=action,
-                )
+                # Prepare pending runtime action request rather than performing local mutation
+                _, prep_res = self.prepare_runtime_rollback_request(report, task_run_id)
+                return prep_res
 
             before_hash = active_ver.content_hash
             after_hash = parent_ver.content_hash
@@ -294,7 +374,8 @@ class CuratorExecutor:
             mem = self.memory_store.get_memory(report.version_or_record_id)
             if not mem:
                 return CuratorExecutionResult(decision=report.decision, applied=False, message="Memory record not found.")
-            mem.status = MemoryStatus.STALE
+            # Set revalidation_needed flag without destroying active status
+            mem.metadata["revalidation_needed"] = True
             self.memory_store.backend.put(mem)
             action = CuratorActionRecord(
                 action_id=action_id,
@@ -303,15 +384,15 @@ class CuratorExecutor:
                 evaluated_version=report.version_or_record_id,
                 decision=report.decision,
                 execution_status="APPLIED",
-                details=f"Memory record '{mem.id}' marked STALE for revalidation.",
-                audit_trail=["MEMORY_STATUS_UPDATE"],
+                details=f"Memory record '{mem.id}' flagged for revalidation while maintaining standing active truth.",
+                audit_trail=["MEMORY_REVALIDATION_FLAGGED"],
             )
             self._record_action(action)
             return CuratorExecutionResult(
                 decision=report.decision,
                 applied=True,
                 message=action.details,
-                active_memory_status_after=MemoryStatus.STALE.value,
+                active_memory_status_after=mem.status.value,
                 action_record=action,
             )
 
@@ -330,6 +411,26 @@ class CuratorExecutor:
         """Processes an authoritative runtime rollback result returned from external Spark tool orchestration."""
         action_id = request.action_id
         audit_trail = ["RUNTIME_SKILL_LOOKUP", "RUNTIME_SKILL_UPDATE", "RUNTIME_SKILL_READBACK"]
+
+        # Step 1: Validate action_id binding
+        if result.action_id != request.action_id:
+            action = CuratorActionRecord(
+                action_id=action_id,
+                task_run_id=request.task_run_id,
+                artifact_id=request.skill_name,
+                evaluated_version=request.evaluated_version,
+                decision=CuratorDecision.RETIRE_SKILL_VERSION,
+                execution_status="FAILED",
+                details=f"Mismatched action_id in runtime result: expected {request.action_id}, got {result.action_id}",
+                audit_trail=audit_trail,
+            )
+            self._record_action(action)
+            return CuratorExecutionResult(
+                decision=CuratorDecision.RETIRE_SKILL_VERSION,
+                applied=False,
+                message=action.details,
+                action_record=action,
+            )
 
         if result.status != "SUCCESS":
             status = "REJECTED_STALE" if result.status == "STALE_HASH_MISMATCH" else "FAILED"
@@ -353,6 +454,7 @@ class CuratorExecutor:
                 action_record=action,
             )
 
+        # Step 2: Validate hashes
         if result.observed_before_hash != request.expected_runtime_hash:
             action = CuratorActionRecord(
                 action_id=action_id,
@@ -393,6 +495,7 @@ class CuratorExecutor:
                 action_record=action,
             )
 
+        # Step 3: Finalize local version store
         ok, msg, restored = self.version_store.rollback(
             skill_name=request.skill_name,
             target_version_id=request.rollback_target_version,
@@ -438,4 +541,3 @@ class CuratorExecutor:
             active_version_after=request.rollback_target_version,
             action_record=action,
         )
-EOF
