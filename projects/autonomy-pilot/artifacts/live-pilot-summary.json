@@ -1,0 +1,45 @@
+{
+  "pilot_id": "autonomy_pilot_1_1",
+  "milestone": "Autonomy Pilot 1.1 — Live Pilot, No Simulation",
+  "evidence_classification": {
+    "live_spark_tasks": {
+      "github_live_inspection": {
+        "evidence_class": "LIVE_SPARK",
+        "tool": "custom_mcp:get_commit, custom_mcp:list_branches",
+        "target": "Nercari/spark-agent",
+        "status": "VERIFIED_LIVE",
+        "result": "Genuinely read remote HEAD commit 496d1f7 and branch main directly from GitHub REST API."
+      },
+      "runtime_skill_lookup": {
+        "evidence_class": "LIVE_SPARK",
+        "tool": "skills:lookup_skills",
+        "target": "user:structured-formatter",
+        "status": "VERIFIED_LIVE",
+        "result": "Genuinely loaded skill from active runtime surface with verified content hash."
+      },
+      "natural_procedural_learning": {
+        "evidence_class": "LIVE_SPARK",
+        "status": "NO_NATURAL_PROCEDURAL_LEARNING_EVENT_OCCURRED",
+        "result": "No recoverable procedural failure occurred during live operations; none manufactured."
+      }
+    },
+    "local_harness_integration_tests": {
+      "evidence_class": "LOCAL_HARNESS",
+      "test_suite": "projects/autonomy-pilot/tests/test_pilot.py",
+      "status": "PASSED_IN_CI",
+      "tasks_total": 10,
+      "scope": "Verifies data models, state machine transitions, SQLite concurrency, and memory supersession algorithms within sandbox/CI."
+    },
+    "controlled_safety_tests": {
+      "evidence_class": "CONTROLLED_LIVE_SAFETY",
+      "status": "VERIFIED_ISOLATED",
+      "scope": "Automated regression detection and rollback protocol tested separately from normal workload metrics."
+    },
+    "host_capability_blocker": {
+      "evidence_class": "SPARK_REPORTED_PRIVATE_RUNTIME",
+      "status": "BLOCKED",
+      "blocker_code": "BLOCKED BY HOST CAPABILITY: GENUINELY FRESH SPARK SESSION CREATION NOT AVAILABLE",
+      "description": "Host environment does not expose an autonomous multi-session coordination API to spawn, prompt, and step through disjoint top-level conversations programmatically."
+    }
+  }
+}
