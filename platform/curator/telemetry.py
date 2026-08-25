@@ -2,12 +2,13 @@
 
 import os
 import json
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from platform.learning.contracts import VerificationStatus
 from platform.memory.contracts import MemoryScope
 from platform.curator.contracts import (
     ArtifactType,
     ObservedEffect,
+    UsageState,
     LearningOutcomeRecord,
     SkillTelemetry,
     MemoryTelemetry,
@@ -28,18 +29,29 @@ class LearningTelemetryLedger:
         skill_version: str,
         task_run_id: str,
         retrieved: bool,
-        used: bool,
+        used: Any,
         verification_status: VerificationStatus,
+        task_family: str = "default_task_family",
         recovery_required: bool = False,
         observed_effect: ObservedEffect = ObservedEffect.UNKNOWN,
     ) -> LearningOutcomeRecord:
+        if isinstance(used, bool):
+            used_str = "TRUE" if used else "FALSE"
+        elif isinstance(used, UsageState):
+            used_str = used.value
+        else:
+            used_str = str(used).upper()
+            if used_str not in {"TRUE", "FALSE", "UNKNOWN"}:
+                used_str = "UNKNOWN"
+
         rec = LearningOutcomeRecord(
             artifact_type=ArtifactType.SKILL,
             artifact_id=skill_name,
             version_or_record_id=skill_version,
             task_run_id=task_run_id,
             retrieved=retrieved,
-            used=used,
+            used=used_str,
+            task_family=task_family,
             verification_status=verification_status,
             recovery_required=recovery_required,
             observed_effect=observed_effect,
@@ -52,18 +64,27 @@ class LearningTelemetryLedger:
         memory_id: str,
         task_run_id: str,
         retrieved: bool,
-        used: bool,
+        used: Any,
         verification_status: VerificationStatus,
         observed_effect: ObservedEffect = ObservedEffect.UNKNOWN,
         metadata: Optional[Dict] = None,
     ) -> LearningOutcomeRecord:
+        if isinstance(used, bool):
+            used_str = "TRUE" if used else "FALSE"
+        elif isinstance(used, UsageState):
+            used_str = used.value
+        else:
+            used_str = str(used).upper()
+            if used_str not in {"TRUE", "FALSE", "UNKNOWN"}:
+                used_str = "UNKNOWN"
+
         rec = LearningOutcomeRecord(
             artifact_type=ArtifactType.MEMORY,
             artifact_id=memory_id,
             version_or_record_id=memory_id,
             task_run_id=task_run_id,
             retrieved=retrieved,
-            used=used,
+            used=used_str,
             verification_status=verification_status,
             observed_effect=observed_effect,
             metadata=metadata or {},
@@ -86,17 +107,22 @@ class LearningTelemetryLedger:
                     records.append(LearningOutcomeRecord.from_dict(json.loads(line)))
         return records
 
-    def get_skill_telemetry(self, skill_name: str, skill_version: str) -> SkillTelemetry:
+    def get_skill_telemetry(self, skill_name: str, skill_version: str, task_family: Optional[str] = None) -> SkillTelemetry:
         records = self.get_all_records()
-        telemetry = SkillTelemetry(skill_name=skill_name, skill_version=skill_version)
+        telemetry = SkillTelemetry(skill_name=skill_name, skill_version=skill_version, task_family=task_family or "all")
 
         for r in records:
             if r.artifact_type == ArtifactType.SKILL and r.artifact_id == skill_name and r.version_or_record_id == skill_version:
+                if task_family and r.task_family != task_family:
+                    continue
                 if r.retrieved:
                     telemetry.retrieval_count += 1
-                if r.used:
+                if r.used == "TRUE":
                     telemetry.use_count += 1
                     telemetry.last_used_at = r.timestamp
+                elif r.used == "UNKNOWN":
+                    telemetry.unknown_use_count += 1
+
                 if r.verification_status == VerificationStatus.VERIFIED_SUCCESS:
                     telemetry.verified_success_count += 1
                 elif r.verification_status == VerificationStatus.VERIFIED_FAILURE:
@@ -114,9 +140,12 @@ class LearningTelemetryLedger:
             if r.artifact_type == ArtifactType.MEMORY and r.artifact_id == memory_id:
                 if r.retrieved:
                     telemetry.retrieval_count += 1
-                if r.used:
+                if r.used == "TRUE":
                     telemetry.use_count += 1
                     telemetry.last_used_at = r.timestamp
+                elif r.used == "UNKNOWN":
+                    telemetry.unknown_use_count += 1
+
                 if r.verification_status == VerificationStatus.VERIFIED_SUCCESS:
                     telemetry.verified_success_count += 1
                 if r.metadata.get("conflict_observed", False):
@@ -125,4 +154,3 @@ class LearningTelemetryLedger:
                     telemetry.correction_count += 1
 
         return telemetry
-EOF

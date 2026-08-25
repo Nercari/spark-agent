@@ -29,6 +29,12 @@ class CuratorDecision(str, Enum):
     ARCHIVE_MEMORY = "ARCHIVE_MEMORY"
 
 
+class UsageState(str, Enum):
+    TRUE = "TRUE"
+    FALSE = "FALSE"
+    UNKNOWN = "UNKNOWN"
+
+
 @dataclass
 class LearningOutcomeRecord:
     artifact_type: ArtifactType
@@ -36,8 +42,9 @@ class LearningOutcomeRecord:
     version_or_record_id: str
     task_run_id: str
     retrieved: bool
-    used: bool
-    verification_status: VerificationStatus
+    used: str = "TRUE"  # TRUE | FALSE | UNKNOWN
+    task_family: str = "default_task_family"
+    verification_status: VerificationStatus = VerificationStatus.UNKNOWN
     recovery_required: bool = False
     observed_effect: ObservedEffect = ObservedEffect.UNKNOWN
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
@@ -63,8 +70,10 @@ class LearningOutcomeRecord:
 class SkillTelemetry:
     skill_name: str
     skill_version: str
+    task_family: str = "default_task_family"
     retrieval_count: int = 0
     use_count: int = 0
+    unknown_use_count: int = 0
     verified_success_count: int = 0
     verified_failure_count: int = 0
     recovery_required_count: int = 0
@@ -95,6 +104,7 @@ class MemoryTelemetry:
     key: str
     retrieval_count: int = 0
     use_count: int = 0
+    unknown_use_count: int = 0
     verified_success_count: int = 0
     conflict_count: int = 0
     correction_count: int = 0
@@ -115,6 +125,7 @@ class CuratorEvaluationReport:
     decision: CuratorDecision
     observed_effect: ObservedEffect
     reason: str
+    task_family: str = "default_task_family"
     metrics: Dict[str, Any] = field(default_factory=dict)
     suggested_action: Optional[str] = None
 
@@ -126,9 +137,19 @@ class CuratorEvaluationReport:
             "decision": self.decision.value,
             "observed_effect": self.observed_effect.value,
             "reason": self.reason,
+            "task_family": self.task_family,
             "metrics": self.metrics,
             "suggested_action": self.suggested_action,
         }
+
+
+@dataclass
+class CuratorExecutionResult:
+    decision: CuratorDecision
+    applied: bool
+    message: str
+    active_version_after: Optional[str] = None
+    active_memory_status_after: Optional[str] = None
 
 
 @dataclass

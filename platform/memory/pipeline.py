@@ -67,14 +67,27 @@ class MemoryContextManager:
                 )
 
                 if classification.is_memory and classification.key and classification.value:
+                    target_scope = classification.scope or MemoryScope.PROJECT
+                    target_scope_id = classification.scope_id or task_run.project_scope_id
+
+                    # Read active key revision for optimistic CAS
+                    existing_active = self.memory_store.retrieve_memories(
+                        scope=target_scope,
+                        scope_id=target_scope_id,
+                        key=classification.key,
+                        status=MemoryStatus.ACTIVE,
+                    )
+                    expected_rev = existing_active[0].metadata.get("revision") if existing_active else None
+
                     new_mem, _, ok, _ = self.memory_store.create_or_update_memory(
-                        scope=classification.scope or MemoryScope.PROJECT,
-                        scope_id=classification.scope_id or task_run.project_scope_id,
+                        scope=target_scope,
+                        scope_id=target_scope_id,
                         kind=classification.kind or MemoryKind.FACT,
                         key=classification.key,
                         value=classification.value,
                         provenance_evidence_ids=[ev.id],
                         is_trusted_user_authority=is_trusted,
+                        expected_revision=expected_rev,
                     )
                     if ok and new_mem:
                         learned_records.append(new_mem)
