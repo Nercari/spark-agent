@@ -51,24 +51,25 @@ class MemoryStore:
     ) -> Tuple[Optional[MemoryRecord], Optional[MemoryRecord], bool, str]:
         """Authority-aware creation and supersession of memory records.
 
+        Enforces:
+        1. Untrusted external evidence cannot create standing active memory (0 records created if none exists).
+        2. Untrusted external evidence cannot overwrite active user truth (logged to candidate_conflicts if exists).
+        3. Atomic CAS protection on active scoped key (scope, scope_id, key).
+
         Returns: (new_record, superseded_record, success, message)
         """
         normalized_key = key.strip().lower().replace(" ", "_")
 
-        existing_records = self.retrieve_memories(
-            scope=scope,
-            scope_id=scope_id,
-            key=normalized_key,
-            status=MemoryStatus.ACTIVE,
-        )
-
-        superseded_record: Optional[MemoryRecord] = None
-        supersedes_id: Optional[str] = None
-
-        if existing_records:
-            active_mem = existing_records[0]
-            # Part 5: Unauthorized external writes cannot overwrite active user memory
-            if not is_trusted_user_authority:
+        # Part 1: Block unauthorized creation & supersession
+        if not is_trusted_user_authority:
+            existing_records = self.retrieve_memories(
+                scope=scope,
+                scope_id=scope_id,
+                key=normalized_key,
+                status=MemoryStatus.ACTIVE,
+            )
+            if existing_records:
+                active_mem = existing_records[0]
                 conflicts = active_mem.metadata.setdefault("candidate_conflicts", [])
                 conflicts.append({
                     "detected_at": datetime.now(timezone.utc).isoformat(),
@@ -77,38 +78,20 @@ class MemoryStore:
                 })
                 self.backend.update(active_mem)
                 return active_mem, None, False, f"Unauthorized external evidence cannot overwrite active user memory for '{normalized_key}'."
+            else:
+                return None, None, False, f"Unauthorized external evidence cannot create standing active memory for '{normalized_key}'."
 
-            # Part 6: Lightweight revision protection
-            current_rev = active_mem.metadata.get("revision")
-            if expected_revision and current_rev != expected_revision:
-                return None, None, False, f"Stale-write race on key '{normalized_key}': expected revision {expected_revision}, got {current_rev}."
-
-            superseded_record = active_mem
-            supersedes_id = superseded_record.id
-            superseded_record.status = MemoryStatus.SUPERSEDED
-            superseded_record.metadata["superseded_at"] = datetime.now(timezone.utc).isoformat()
-            self.backend.update(superseded_record)
-
-        now_iso = datetime.now(timezone.utc).isoformat()
-        meta = metadata or {}
-        meta["revision"] = f"rev_{uuid.uuid4().hex[:8]}"
-
-        new_record = MemoryRecord(
-            id=f"mem_{uuid.uuid4().hex[:10]}",
+        # Part 2: Atomic CAS create / supersede
+        return self.backend.create_or_supersede_atomic(
             scope=scope,
             scope_id=scope_id,
             kind=kind,
             key=normalized_key,
             value=value,
             provenance_evidence_ids=provenance_evidence_ids,
-            created_at=now_iso,
-            last_confirmed_at=now_iso,
-            status=MemoryStatus.ACTIVE,
-            supersedes_memory_id=supersedes_id,
-            metadata=meta,
+            expected_revision=expected_revision,
+            metadata=metadata,
         )
-        self.backend.put(new_record)
-        return new_record, superseded_record, True, "Memory persisted successfully."
 
     def handle_external_conflict(
         self,
@@ -129,7 +112,7 @@ class MemoryStore:
         )
 
         if not existing_records:
-            return False, "No existing user memory to conflict with.", None
+            return False, f"No existing active memory for key '{normalized_key}' to conflict with.", None
 
         active_mem = existing_records[0]
         if active_mem.value == external_value:

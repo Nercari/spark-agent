@@ -1,4 +1,4 @@
-"""Progressive Episodic History Retriever (Metadata Summary -> Evidence Subset -> Full TaskRun)."""
+"""Progressive Episodic History Retriever (Metadata Index -> Evidence Subset -> Full TaskRun)."""
 
 from typing import Any, Dict, List, Optional
 from platform.learning.contracts import TaskRun, EvidenceEvent, EventType, VerificationStatus
@@ -26,38 +26,19 @@ class EpisodicRetriever:
             self.backend = DurableSparkEpisodicBackend()
 
     def search_task_runs(self, query: EpisodicQuery) -> List[TaskRunSummary]:
-        """Stage 1: Progressive disclosure — Returns compact metadata summaries only."""
         summaries: List[TaskRunSummary] = []
-        all_runs = self.backend.list_task_runs()
+        all_summaries = self.backend.list_summaries()
 
-        for task_run in all_runs:
-            if query.skill_name and task_run.skill_name != query.skill_name:
+        for summary in all_summaries:
+            if query.skill_name and summary.skill_name != query.skill_name:
                 continue
-            if query.project_scope_id and task_run.project_scope_id != query.project_scope_id:
+            if query.project_scope_id and summary.project_scope_id != query.project_scope_id:
                 continue
-            if query.verification_status and task_run.verification_status != query.verification_status:
+            status_val = summary.verification_status.value if hasattr(summary.verification_status, "value") else str(summary.verification_status)
+            query_status_val = query.verification_status.value if hasattr(query.verification_status, "value") else str(query.verification_status) if query.verification_status else None
+            if query_status_val and status_val != query_status_val:
                 continue
-            if query.has_error is not None:
-                has_err = any(e.metadata.get("is_error", False) for e in task_run.evidence_events)
-                if has_err != query.has_error:
-                    continue
-            if query.has_recovery is not None:
-                has_rec = any(e.metadata.get("is_recovery", False) for e in task_run.evidence_events)
-                if has_rec != query.has_recovery:
-                    continue
 
-            summary = TaskRunSummary(
-                task_run_id=task_run.id,
-                goal=task_run.goal,
-                skill_name=task_run.skill_name,
-                skill_version=task_run.skill_version,
-                verification_status=task_run.verification_status,
-                started_at=task_run.started_at,
-                completed_at=task_run.completed_at,
-                event_count=len(task_run.evidence_events),
-                project_scope_id=task_run.project_scope_id,
-                user_scope_id=task_run.user_scope_id,
-            )
             summaries.append(summary)
             if len(summaries) >= query.limit:
                 break
@@ -71,7 +52,6 @@ class EpisodicRetriever:
         errors_only: bool = False,
         recoveries_only: bool = False,
     ) -> List[EvidenceEvent]:
-        """Stage 2: Progressive disclosure — Returns bounded evidence event subset."""
         task_run = self.backend.get_task_run(task_run_id)
         if not task_run:
             return []
@@ -89,5 +69,4 @@ class EpisodicRetriever:
         return subset
 
     def get_full_task_run(self, task_run_id: str) -> Optional[TaskRun]:
-        """Stage 3: Progressive disclosure — Loads full TaskRun only when strictly requested."""
         return self.backend.get_task_run(task_run_id)

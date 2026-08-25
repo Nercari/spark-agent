@@ -59,6 +59,27 @@ class SkillVersionStore:
         )
         return v1
 
+    def list_skills(self) -> List[str]:
+        """Lists all managed skills."""
+        if not os.path.exists(self.base_skills_dir):
+            return []
+        skills = []
+        for d in os.listdir(self.base_skills_dir):
+            if os.path.isdir(os.path.join(self.base_skills_dir, d)):
+                skills.append(d)
+        return skills
+
+    def get_version_history(self, skill_name: str) -> List[SkillVersion]:
+        """Returns the full chronological list of immutable versions for a skill."""
+        meta = self._read_metadata(skill_name)
+        history = meta.get("history", [])
+        versions = []
+        for vid in history:
+            v = self.get_version(skill_name, vid)
+            if v:
+                versions.append(v)
+        return versions
+
     def get_active_version(self, skill_name: str) -> Optional[SkillVersion]:
         meta_path = self._get_metadata_path(skill_name)
         if not os.path.exists(meta_path):
@@ -106,7 +127,6 @@ class SkillVersionStore:
         current_num = int(active.version_id.lstrip("v")) if active.version_id.startswith("v") else 1
         new_version_id = f"v{current_num + 1}"
 
-        # Canonical unified diff recomputation
         diff_lines = list(
             difflib.unified_diff(
                 active.content.splitlines(keepends=True),
@@ -182,7 +202,6 @@ class SkillVersionStore:
         return True, f"Successfully rolled back to {target_version_id}.", target_version
 
     def validate_all_versions_diff_integrity(self, skill_name: str) -> Tuple[bool, List[str]]:
-        """Validates that every historical version of a skill has canonical diff integrity."""
         meta = self._read_metadata(skill_name)
         history = meta.get("history", [])
         errors = []
@@ -215,12 +234,6 @@ class SkillVersionStore:
         return {"skill_name": skill_name, "history": []}
 
     def _write_metadata(self, skill_name: str, active_version_id: str, active_version_hash: str, history: List[str]):
-        meta = {
-            "skill_name": skill_name,
-            "active_version_id": active_version_id,
-            "active_version_hash": active_version_hash,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-            "history": history,
-        }
+        meta = {"skill_name": skill_name, "active_version_id": active_version_id, "active_version_hash": active_version_hash, "updated_at": datetime.now(timezone.utc).isoformat(), "history": history}
         with open(self._get_metadata_path(skill_name), "w", encoding="utf-8") as f:
             json.dump(meta, f, indent=2)

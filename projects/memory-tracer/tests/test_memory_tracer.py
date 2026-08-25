@@ -96,6 +96,7 @@ class TestMemoryTracer(unittest.TestCase):
         )
         recorder.record_verification(VerificationStatus.VERIFIED_SUCCESS, "Verified")
         task_run = recorder.complete_task("Done")
+        self.runner.episodic_retriever.backend.save_task_run(task_run)
 
         summaries = self.runner.episodic_retriever.search_task_runs(EpisodicQuery(project_scope_id=self.project_a))
         self.assertEqual(len(summaries), 1)
