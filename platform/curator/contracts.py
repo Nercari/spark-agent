@@ -1,4 +1,4 @@
-"""Data contracts for Autonomous Learning Curator & Measurable Self-Improvement."""
+"""Data contracts for Autonomous Learning Curator, Lifecycle Telemetry & Action Audit."""
 
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
@@ -144,38 +144,70 @@ class CuratorEvaluationReport:
 
 
 @dataclass
+class CuratorActionRecord:
+    action_id: str
+    task_run_id: str
+    artifact_id: str
+    evaluated_version: str
+    decision: CuratorDecision
+    execution_status: str  # APPLIED | REJECTED_STALE | FAILED | NO_ACTION
+    runtime_before_hash: Optional[str] = None
+    runtime_after_hash: Optional[str] = None
+    rollback_target: Optional[str] = None
+    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    details: str = ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        d = asdict(self)
+        d["decision"] = self.decision.value
+        return d
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "CuratorActionRecord":
+        d = data.copy()
+        d["decision"] = CuratorDecision(d["decision"])
+        return cls(**d)
+
+
+@dataclass
 class CuratorExecutionResult:
     decision: CuratorDecision
     applied: bool
     message: str
     active_version_after: Optional[str] = None
     active_memory_status_after: Optional[str] = None
+    action_record: Optional[CuratorActionRecord] = None
 
 
 @dataclass
 class LearningHealthReport:
     active_skills_count: int
-    versions_rolled_back_count: int
-    learned_skills_reused_count: int
-    learned_skills_unreused_count: int
+    actual_rollbacks_count: int
+    retirements_recommended_count: int
+    retirements_executed_count: int
     positive_skill_outcomes_count: int
     negative_skill_outcomes_count: int
+    learned_skills_reused_count: int
+    learned_skills_unreused_count: int
     active_memories_count: int
     superseded_memories_count: int
     memory_conflicts_count: int
     memories_reused_count: int
     corrections_count: int
     evaluations: List[CuratorEvaluationReport] = field(default_factory=list)
+    actions: List[CuratorActionRecord] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "skills": {
                 "active_count": self.active_skills_count,
-                "rolled_back_count": self.versions_rolled_back_count,
-                "reused_count": self.learned_skills_reused_count,
-                "unreused_count": self.learned_skills_unreused_count,
+                "actual_rollbacks": self.actual_rollbacks_count,
+                "retirements_recommended": self.retirements_recommended_count,
+                "retirements_executed": self.retirements_executed_count,
                 "positive_outcomes": self.positive_skill_outcomes_count,
                 "negative_outcomes": self.negative_skill_outcomes_count,
+                "reused_count": self.learned_skills_reused_count,
+                "unreused_count": self.learned_skills_unreused_count,
             },
             "memory": {
                 "active_records": self.active_memories_count,
@@ -185,4 +217,5 @@ class LearningHealthReport:
                 "corrections_ingested": self.corrections_count,
             },
             "evaluations": [e.to_dict() for e in self.evaluations],
+            "actions": [a.to_dict() for a in self.actions],
         }

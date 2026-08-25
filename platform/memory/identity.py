@@ -1,6 +1,7 @@
-"""Runtime Identity Resolver with honest boundary and no hard-coded personal identifiers."""
+"""Runtime Identity Resolver with honest boundary, opaque ID hashing, and zero hard-coded personal identifiers."""
 
 import os
+import hashlib
 from typing import Optional, Protocol
 
 
@@ -30,6 +31,23 @@ class SyntheticTestIdentityProvider:
 
     def resolve_user_scope_id(self) -> Optional[str]:
         return self.test_user_id
+
+
+class SparkIdentityRuntimeAdapter:
+    """Production adapter converting raw profile metadata into sanitized, opaque stable scope IDs."""
+
+    def __init__(self, raw_profile_id_or_email: Optional[str] = None):
+        self.raw_identifier = raw_profile_id_or_email
+
+    def resolve_user_scope_id(self) -> Optional[str]:
+        raw = self.raw_identifier or os.environ.get("SPARK_PROFILE_ID") or os.environ.get("SPARK_RUNTIME_USER_ID")
+        if not raw or not raw.strip():
+            return None
+        clean_raw = raw.strip()
+        if clean_raw.lower() == "default_user":
+            raise ValueError("Forbidden: 'default_user' is not permitted in production identity resolution.")
+        hashed = hashlib.sha256(clean_raw.encode("utf-8")).hexdigest()[:16]
+        return f"usr_{hashed}"
 
 
 def resolve_runtime_user_id(

@@ -9,12 +9,14 @@ from platform.curator.contracts import (
     SkillTelemetry,
     MemoryTelemetry,
     CuratorEvaluationReport,
+    CuratorActionRecord,
     CuratorExecutionResult,
     LearningHealthReport,
 )
 from platform.curator.telemetry import LearningTelemetryLedger
 from platform.curator.evaluator import CuratorEvaluator
-from platform.curator.executor import CuratorExecutor
+from platform.curator.executor import CuratorExecutor, SparkSkillRuntimeAdapter
+from platform.curator.lifecycle import CuratorTriggerPolicy, LearningLifecycleObserver
 from platform.curator.curator import AutonomousLearningCurator
 
 __all__ = [
@@ -26,10 +28,14 @@ __all__ = [
     "SkillTelemetry",
     "MemoryTelemetry",
     "CuratorEvaluationReport",
+    "CuratorActionRecord",
     "CuratorExecutionResult",
     "LearningHealthReport",
     "LearningTelemetryLedger",
     "CuratorEvaluator",
     "CuratorExecutor",
+    "SparkSkillRuntimeAdapter",
+    "CuratorTriggerPolicy",
+    "LearningLifecycleObserver",
     "AutonomousLearningCurator",
 ]
