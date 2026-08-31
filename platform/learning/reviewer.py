@@ -1,4 +1,4 @@
-"""Background Learning Reviewer: Independent Evaluation & Gating of Proposed Mutations."""
+"""Background Learning Reviewer: Independent Evaluation & Gating of Proposed Mutations (EXP-01, EXP-03)."""
 
 import difflib
 import re
@@ -15,7 +15,7 @@ from platform.learning.contracts import (
     can_evidence_authorize_learning,
 )
 from platform.learning.version_store import SkillVersionStore
-from platform.learning.reflection import ReflectionEngine
+from platform.learning.reflection import HermesReflectionEngine, ReflectionEngine
 
 
 class BackgroundLearningReviewer:
@@ -23,7 +23,7 @@ class BackgroundLearningReviewer:
 
     def __init__(self, version_store: SkillVersionStore, reflection_engine: Optional[ReflectionEngine] = None):
         self.version_store = version_store
-        self.reflection_engine = reflection_engine or ReflectionEngine(version_store=version_store)
+        self.reflection_engine = reflection_engine or HermesReflectionEngine(version_store=version_store)
 
     def review_task_run(self, task_run: TaskRun) -> LearningMutation:
         # System skill protection gate: System skills are immutable
