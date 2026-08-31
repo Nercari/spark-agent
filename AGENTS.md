@@ -1,26 +1,13 @@
-# Agent Guidelines & Repository Conventions
+# Repository Guidelines: Gemini Spark Autonomous Agent
 
-## Repository Overview
-This repository implements the Gemini Spark Autonomous Learning Platform with engineering skill conventions.
-
-## Documentation Structure
-- `CONTEXT.md`: Root domain glossary and architecture model.
-- `docs/adr/`: Architecture Decision Records.
-- `docs/agents/`: Configuration for issue tracker, triage labels, and domain layouts.
-- `.scratch/`: Local issue tracker and task tickets.
-
-## Agent Skills & Workflows
-
-When working on this repository, use the following engineering skills:
-
-- `ask-matt`: Route engineering questions to the appropriate skill or practice.
-- `domain-modeling`: Update and sharpen `CONTEXT.md` and `docs/adr/` when domain concepts or architectural decisions change.
-- `grill-with-docs`: Stress-test technical designs against `CONTEXT.md` before implementation.
-- `to-spec`: Transform discussions and requirements into structured specifications.
-- `to-tickets`: Decompose specifications into vertical-slice task tickets in `.scratch/`.
-- `triage`: Move tickets through canonical triage states (`needs-triage` -> `ready-for-agent`).
-- `tdd`: Practice test-driven development (red-green-refactor) for implementation.
-- `implement`: Execute tickets using disciplined TDD and pre-commit verification.
-- `codebase-design`: Design deep modules with minimal interfaces and clean seams.
-- `diagnosing-bugs`: Systematically diagnose and regression-test hard bugs.
-- `code-review`: Review diffs for coding standards, code smells, and spec compliance.
+## Project Structure & Architecture
+- `platform/`: Autonomous self-learning core runtime (Hermes-compatible implementation baseline).
+  - `learning/`: Procedural skill learning, reflection engine, and version store.
+  - `memory/`: Declarative memory store and context management.
+  - `episodic/`: Episodic evidence capture and retrieval backend.
+  - `curator/`: Autonomous curator, lifecycle observer, and telemetry ledger.
+- `skills/`: Versioned procedural skills packages (`SKILL.md`, `metadata.json`, `versions/`).
+- `projects/`: Task-level operational integration and test projects.
+- `eval_engine/`: Behavioral evaluation harness and test suites.
+- `ledger/`: Autoresearch experiments ledger tracking champion progression.
+- `tests/`: Platform regression tests and unit test suite.
