@@ -1,99 +1,109 @@
-"""Filesystem and Runtime Storage Backend for Versioned Procedural Skills."""
+"""Skill Backend & Runtime Bridge Interface with TaskRun Provenance & Stale-Write Protection."""
 
-import json
+import abc
 import os
-import shutil
-import threading
-from abc import ABC, abstractmethod
-from typing import Dict, List, Optional
-from platform.learning.contracts import SkillVersion, TaskRun, generate_sha256
+import json
+import difflib
+from dataclasses import dataclass, asdict
+from datetime import datetime, timezone
+from typing import Optional, Tuple, Dict, Any
+from platform.learning.contracts import SkillVersion, LearningMutation, generate_sha256
+from platform.learning.version_store import SkillVersionStore
 
 
-class SkillBackend(ABC):
-    """Abstract interface for procedural skill storage."""
+@dataclass
+class SparkSkillUpdateManifest:
+    """Represents a payload prepared for dispatching skill mutations to Gemini Spark runtime tools."""
+    skill_name: str
+    target_version_id: str
+    base_version_id: str
+    base_version_hash: str
+    proposed_content: str
+    diff_preview: str
+    change_reason: str
+    task_run_id: str
+    evidence_ids: list
 
-    @abstractmethod
-    def save_version(self, skill_name: str, version: SkillVersion):
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+class SkillBackend(abc.ABC):
+    """Abstract interface defining the contract for managing versioned procedural skills."""
+
+    @abc.abstractmethod
+    def read_skill(self, skill_name: str, version_id: Optional[str] = None) -> Optional[SkillVersion]:
+        """Reads a specific or active skill version."""
         pass
 
-    @abstractmethod
-    def get_version(self, skill_name: str, version_id: str) -> Optional[SkillVersion]:
-        pass
-
-    @abstractmethod
-    def list_versions(self, skill_name: str) -> List[str]:
+    @abc.abstractmethod
+    def write_skill_version(
+        self,
+        mutation: LearningMutation,
+        expected_base_version_id: str,
+    ) -> Tuple[bool, str, Optional[SkillVersion]]:
+        """Persists a new skill version ensuring base version match and atomic promotion."""
         pass
 
 
 class LocalFilesystemSkillBackend(SkillBackend):
-    """Local filesystem implementation of SkillBackend storing version manifests in skills/<name>/versions/."""
+    """Concrete SkillBackend implementation operating directly on local skills directory via SkillVersionStore."""
 
-    def __init__(self, base_skills_dir: Optional[str] = None):
-        self.base_skills_dir = base_skills_dir or os.path.expanduser("~/.spark/skills")
-        self._lock = threading.Lock()
-        os.makedirs(self.base_skills_dir, exist_ok=True)
+    def __init__(self, version_store: SkillVersionStore):
+        self.version_store = version_store
 
-    def _get_skill_dir(self, skill_name: str) -> str:
-        clean = skill_name.split(":", 1)[-1] if ":" in skill_name else skill_name
-        return os.path.join(self.base_skills_dir, clean)
+    def read_skill(self, skill_name: str, version_id: Optional[str] = None) -> Optional[SkillVersion]:
+        if version_id:
+            return self.version_store.get_version(skill_name, version_id)
+        return self.version_store.get_active_version(skill_name)
 
-    def _get_versions_dir(self, skill_name: str) -> str:
-        return os.path.join(self._get_skill_dir(skill_name), "versions")
-
-    def save_version(self, skill_name: str, version: SkillVersion):
-        with self._lock:
-            vdir = self._get_versions_dir(skill_name)
-            os.makedirs(vdir, exist_ok=True)
-            vpath = os.path.join(vdir, f"{version.version_id}.json")
-            with open(vpath, "w", encoding="utf-8") as f:
-                json.dump(version.to_dict(), f, indent=2)
-
-    def get_version(self, skill_name: str, version_id: str) -> Optional[SkillVersion]:
-        with self._lock:
-            vpath = os.path.join(self._get_versions_dir(skill_name), f"{version_id}.json")
-            if not os.path.exists(vpath):
-                return None
-            with open(vpath, "r", encoding="utf-8") as f:
-                return SkillVersion.from_dict(json.load(f))
-
-    def list_versions(self, skill_name: str) -> List[str]:
-        with self._lock:
-            vdir = self._get_versions_dir(skill_name)
-            if not os.path.exists(vdir):
-                return []
-            versions = []
-            for fname in sorted(os.listdir(vdir)):
-                if fname.endswith(".json"):
-                    versions.append(fname[:-5])
-            return versions
+    def write_skill_version(
+        self,
+        mutation: LearningMutation,
+        expected_base_version_id: str,
+    ) -> Tuple[bool, str, Optional[SkillVersion]]:
+        return self.version_store.append_version(
+            skill_name=mutation.target_skill,
+            new_content=mutation.proposed_content,
+            change_reason=mutation.reason,
+            expected_base_version_id=expected_base_version_id,
+            task_run_id=mutation.task_run_id,
+            diff=mutation.diff,
+        )
 
 
-class SparkSkillUpdateManifest:
-    """Represents a payload prepared for dispatching skill mutations to Gemini Spark runtime tools."""
+class SparkRuntimeSkillBridge(SkillBackend):
+    """Runtime bridge preparing mutations for execution in live Gemini Spark agent sessions."""
 
-    def __init__(self, skill_name: str, new_content: str, change_reason: str, version_id: str):
-        self.skill_name = skill_name
-        self.new_content = new_content
-        self.change_reason = change_reason
-        self.version_id = version_id
-        self.content_hash = generate_sha256(new_content)
+    def __init__(self, local_backend: LocalFilesystemSkillBackend):
+        self.local_backend = local_backend
+        self.pending_manifests: list[SparkSkillUpdateManifest] = []
 
+    def read_skill(self, skill_name: str, version_id: Optional[str] = None) -> Optional[SkillVersion]:
+        return self.local_backend.read_skill(skill_name, version_id)
 
-class SparkRuntimeSkillBridge:
-    """Dispatches skill mutations to external tools when running in live agent environment."""
+    def write_skill_version(
+        self,
+        mutation: LearningMutation,
+        expected_base_version_id: str,
+    ) -> Tuple[bool, str, Optional[SkillVersion]]:
+        active_ver = self.read_skill(mutation.target_skill)
+        if not active_ver or active_ver.version_id != expected_base_version_id:
+            return False, f"Stale write rejected: expected {expected_base_version_id}, found {active_ver.version_id if active_ver else 'None'}", None
 
-    def __init__(self, update_skill_tool_fn: Optional[Any] = None):
-        self.update_skill_tool_fn = update_skill_tool_fn
+        # Build execution manifest
+        manifest = SparkSkillUpdateManifest(
+            skill_name=mutation.target_skill,
+            target_version_id=f"v{len(self.local_backend.version_store._get_metadata_path(mutation.target_skill)) + 1}",
+            base_version_id=expected_base_version_id,
+            base_version_hash=mutation.base_version_hash,
+            proposed_content=mutation.proposed_content,
+            diff_preview=mutation.diff,
+            change_reason=mutation.reason,
+            task_run_id=mutation.task_run_id,
+            evidence_ids=mutation.evidence_ids,
+        )
+        self.pending_manifests.append(manifest)
 
-    def apply_runtime_mutation(self, manifest: SparkSkillUpdateManifest) -> bool:
-        if not self.update_skill_tool_fn:
-            return True
-        try:
-            self.update_skill_tool_fn(
-                name=manifest.skill_name,
-                content=manifest.new_content,
-                description=f"Auto-learned mutation {manifest.version_id}: {manifest.change_reason}",
-            )
-            return True
-        except Exception:
-            return False
+        # Apply locally
+        return self.local_backend.write_skill_version(mutation, expected_base_version_id)
