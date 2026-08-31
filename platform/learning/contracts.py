@@ -233,7 +233,8 @@ class TaskRun:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "TaskRun":
-        events = [EvidenceEvent.from_dict(e) for e in data.get("evidence_events", [])]\n        return cls(
+        events = [EvidenceEvent.from_dict(e) for e in data.get("evidence_events", [])]
+        return cls(
             id=data["id"],
             goal=data["goal"],
             started_at=data["started_at"],
