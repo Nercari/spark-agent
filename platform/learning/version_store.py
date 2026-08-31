@@ -29,6 +29,25 @@ class SkillVersionStore:
     def _get_versions_dir(self, skill_name: str) -> str:
         return os.path.join(self._get_skill_dir(skill_name), "versions")
 
+    def list_skills(self) -> List[str]:
+        """Lists all skill names present in the skills directory."""
+        with self._lock:
+            skills = []
+            if not os.path.exists(self.base_skills_dir):
+                return skills
+            for entry in os.listdir(self.base_skills_dir):
+                sdir = os.path.join(self.base_skills_dir, entry)
+                if os.path.isdir(sdir):
+                    skills.append(f"user:{entry}")
+            return sorted(skills)
+
+    def get_active_version(self, skill_name: str) -> Optional[SkillVersion]:
+        """Retrieves active SkillVersion instance for a skill."""
+        active_id = self.get_active_version_id(skill_name)
+        if not active_id:
+            return None
+        return self.get_version(skill_name, active_id)
+
     def initialize_skill_version(
         self,
         skill_name: str,

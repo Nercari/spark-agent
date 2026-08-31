@@ -1,4 +1,4 @@
-"""Procedural Skill Router: Scope-Isolated, Paraphrase-Tolerant Discovery & Trigger Precision."""
+"""Procedural Skill Router: Scope-Isolated, Paraphrase-Tolerant Discovery & Trigger Precision (EXP-07)."""
 
 import re
 from dataclasses import dataclass, field
@@ -206,7 +206,7 @@ class ProceduralSkillRouter:
 
         scope_matched = bool(manifest.project_scope and project_scope_id and manifest.project_scope == project_scope_id)
 
-        # Gate 2: Negative Trigger Boundaries ("When NOT to Use")
+        # Gate 2: Negative Trigger Boundaries (\"When NOT to Use\")
         goal_lower = goal.lower()
         for neg_trigger in manifest.when_not_to_use:
             neg_tokens = ProceduralSkillParser._tokenize(neg_trigger)
