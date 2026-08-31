@@ -1,4 +1,4 @@
-"""Procedural Skill Router & Manifest Parser: Scope-Isolated Skill Routing (EXP-07)."""
+"""Procedural Skill Router & Manifest Parser: Scope-Isolated Skill Routing (EXP-07 & EXP-08)."""
 
 import os
 import re

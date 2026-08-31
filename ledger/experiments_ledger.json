@@ -176,5 +176,29 @@
     "decision": "PROMOTE",
     "promoted_champion": "v1.7.0-procedural-skill-router",
     "next_best_hypothesis": "EXP-08: Adaptive Multi-Source Authority Arbiter & Conflict Resolution Engine"
+  },
+  {
+    "experiment_id": "EXP-08",
+    "title": "Adaptive Multi-Source Authority Arbiter & Conflict-Resolution Engine for Live State vs Conventions vs Skills vs Episodes",
+    "champion": "v1.7.0-procedural-skill-router",
+    "hypothesis": "Implementing an explicit 4-tier Authority Arbiter (Tier 1: Live State > Tier 2: Declarative Conventions > Tier 3: Procedural Skills > Tier 4: Episodic Evidence) with scope-level tie-breaking (Project > User), untrusted origin disqualification, and context warning annotations will guarantee that stale historical episodes and unverified claims never override standing conventions or verified live reality while resolving multi-source conflicts deterministically.",
+    "observed_weakness": "Conflict resolution across heterogeneous memory tiers relied on implicit ranking scattered across modules; stale historical episodes could contradict active conventions in injected context without explicit authority warnings or tier gating.",
+    "mechanism_targeted": "Multi-Source Authority Arbiter (platform/learning/authority_arbiter.py)",
+    "exact_change": "Created AuthorityArbiter with AuthorityTier enum, candidate ranking engine, scope-level tie-breaking, untrusted payload disqualification, and context sanitization warning annotations.",
+    "files_changed": [
+      "platform/learning/authority_arbiter.py",
+      "platform/learning/skill_router.py",
+      "platform/learning/__init__.py",
+      "ledger/experiments_ledger.json",
+      "tests/test_platform_learning.py"
+    ],
+    "champion_result": "Implicit authority resolution lacked unified 4-tier arbitration and did not warn on stale episode contradictions.",
+    "challenger_result": "Deterministically arbitrated 4-tier hierarchy, disqualified untrusted origins, and annotated stale episodic parameters with authority warnings; 96/96 unit tests and 43/43 behavioral benchmarks passed.",
+    "regressions": "None. Latency overhead <1ms.",
+    "raw_evidence_location": "tests/test_platform_learning.py::test_dw_authority_hierarchy_four_tier_arbitration",
+    "interpretation": "Measurable improvement in multi-source conflict resolution, authority correctness, and anti-poisoning defense. Promoted to champion.",
+    "decision": "PROMOTE",
+    "promoted_champion": "v1.8.0-authority-arbiter",
+    "next_best_hypothesis": "EXP-09: Multi-Session Continuous Learning Synthesis & Knowledge Consolidation"
   }
 ]
