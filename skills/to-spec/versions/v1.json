@@ -1,0 +1,11 @@
+{
+  "metadata": {
+    "version_id": "v1",
+    "parent_version_id": null,
+    "created_at": "2026-08-25T00:00:00Z",
+    "content_hash": "edaa2f846435656e95e4ecc95b18f59d14802f1b",
+    "author": "system",
+    "change_reason": "Initial baseline manifest"
+  },
+  "content": "---\nname: to-spec\ndescription: Synthesize current conversation context and codebase understanding into a structured feature specification and publish it to the issue tracker. Use when drafting a spec or PRD.\n---\n# To Spec\n\nDraft structured feature specifications.\n"
+}

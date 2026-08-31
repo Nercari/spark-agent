@@ -1,0 +1,11 @@
+{
+  "metadata": {
+    "version_id": "v1",
+    "parent_version_id": null,
+    "created_at": "2026-08-25T00:00:00Z",
+    "content_hash": "94fc778aee83a88ec7be71333aba0b25605a1a7f",
+    "author": "system",
+    "change_reason": "Initial baseline manifest"
+  },
+  "content": "---\nname: codebase-design\ndescription: Shared discipline and vocabulary for designing deep modules with small interfaces, clean seams, and testability. Use when designing interfaces, modules, or boundaries.\n---\n# Codebase Design\n\nDesign deep modules with clean seams.\n"
+}

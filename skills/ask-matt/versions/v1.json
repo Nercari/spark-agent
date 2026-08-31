@@ -1,0 +1,11 @@
+{
+  "metadata": {
+    "version_id": "v1",
+    "parent_version_id": null,
+    "created_at": "2026-08-25T00:00:00Z",
+    "content_hash": "21092c63a88c4fb1d2e3192d402fcad4559e7cd2",
+    "author": "system",
+    "change_reason": "Initial baseline manifest"
+  },
+  "content": "---\nname: ask-matt\ndescription: Ask which engineering skill or workflow fits your situation. A router over engineering skills to find the right tool or practice for code work.\n---\n# Ask Matt\n\nRoute engineering questions to appropriate skills.\n"
+}

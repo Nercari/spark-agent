@@ -1,0 +1,16 @@
+{
+  "skill_name": "user:triage",
+  "display_name": "Triage",
+  "active_version_id": "v1",
+  "versions": ["v1"],
+  "triggers": [
+    "move issues through a state machine of triage roles",
+    "triaging issues and backlogs",
+    "needs-triage needs-info ready-for-agent ready-for-human wontfix"
+  ],
+  "negative_triggers": [
+    "implementing tickets via TDD",
+    "writing system documentation"
+  ],
+  "project_scope_id": null
+}

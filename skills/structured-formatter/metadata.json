@@ -1,13 +1,16 @@
 {
   "skill_name": "user:structured-formatter",
-  "active_version_id": "v5",
-  "active_version_hash": "6cf679aa22ce0cf4bda90d9a6c9d0ad1cb10f04c0ec8eb875cf5ea83c2718e24",
-  "updated_at": "2026-08-24T22:48:49.000000+00:00",
-  "history": [
-    "v1",
-    "v2",
-    "v3",
-    "v4",
-    "v5"
-  ]
+  "display_name": "Structured Formatter",
+  "active_version_id": "v1",
+  "versions": ["v1"],
+  "triggers": [
+    "format incoming server hardware and system metrics for structured reporting",
+    "convert raw telemetry strings or system metrics into standardized outputs",
+    "parse metrics and format json"
+  ],
+  "negative_triggers": [
+    "git conflict resolution",
+    "drafting legal contracts"
+  ],
+  "project_scope_id": null
 }

@@ -1,0 +1,11 @@
+{
+  "metadata": {
+    "version_id": "v1",
+    "parent_version_id": null,
+    "created_at": "2026-08-25T00:00:00Z",
+    "content_hash": "210519c3d146a56ed1fbfaa9ec83f274863c81e4",
+    "author": "system",
+    "change_reason": "Initial baseline manifest"
+  },
+  "content": "---\nname: setup-matt-pocock-skills\ndescription: Configure repository infrastructure for engineering skills. Issue tracker (GitHub, GitLab, local markdown), triage labels, and domain doc layout (CONTEXT.md, docs/adr/). Run once per repo.\n---\n# Setup Matt Pocock Skills\n\nInitialize engineering repository layout.\n"
+}

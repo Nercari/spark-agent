@@ -1,12 +1,11 @@
 {
-  "version_id": "v1",
-  "skill_name": "user:structured-formatter",
-  "parent_version_id": null,
-  "content": "---\nname: structured-formatter\ndescription: Formats incoming server, hardware, and system metrics for structured reporting. Use when converting raw telemetry strings or system metrics into standardized outputs.\n---\n# Structured Formatter\n\nFormat and transform system and infrastructure metrics into standardized outputs.\n\n## When to Use\n\n- When parsing and converting server metrics (CPU, memory, disk, network) into reports.\n- When generating structured data outputs from raw telemetry strings.\n\n## Output Format\n\n- Output format: Field: value pairs on separate lines.\n\n## Steps\n\n1. Parse the input metric tokens.\n2. Format each field as `Field: Value`.\n",
-  "content_hash": "7c9700f60d00f670f5e1eecab05d26305a415ff66bb566ae8fdf289a243644c0",
-  "created_at": "2026-08-24T19:54:57.000000+00:00",
-  "created_from_task_run_id": null,
-  "change_reason": "Initial baseline",
-  "diff": null,
-  "status": "superseded"
+  "metadata": {
+    "version_id": "v1",
+    "parent_version_id": null,
+    "created_at": "2026-08-25T00:00:00Z",
+    "content_hash": "ec47541e67a0703069cffb5613fb77fdd455ae63",
+    "author": "system",
+    "change_reason": "Initial baseline manifest"
+  },
+  "content": "---\nname: structured-formatter\ndescription: Formats incoming server, hardware, and system metrics for structured reporting. Use when converting raw telemetry strings or system metrics into standardized outputs.\n---\n# Structured Formatter\n\nFormat system telemetry data.\n"
 }

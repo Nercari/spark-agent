@@ -1,0 +1,11 @@
+{
+  "metadata": {
+    "version_id": "v1",
+    "parent_version_id": null,
+    "created_at": "2026-08-25T00:00:00Z",
+    "content_hash": "4c042bb08c3ca51df24b02c77b0c68ed8a9f2b5d",
+    "author": "system",
+    "change_reason": "Initial baseline manifest"
+  },
+  "content": "---\nname: grill-with-docs\ndescription: Grilling session that challenges a plan against the domain model, sharpens terminology, and updates CONTEXT.md and ADRs inline as decisions crystallise. Use before implementing major features.\n---\n# Grill With Docs\n\nStress-test technical plans against domain context.\n"
+}

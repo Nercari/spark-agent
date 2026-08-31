@@ -1,0 +1,11 @@
+{
+  "metadata": {
+    "version_id": "v1",
+    "parent_version_id": null,
+    "created_at": "2026-08-25T00:00:00Z",
+    "content_hash": "40938e0ed4906d58068c54655d669096194c8ac4",
+    "author": "system",
+    "change_reason": "Initial baseline manifest"
+  },
+  "content": "---\nname: to-tickets\ndescription: Break down a plan, spec, or conversation into vertical-slice tracer-bullet tickets with explicit blocking edges. Use when decomposing specs into actionable task tickets.\n---\n# To Tickets\n\nDecompose specs into vertical-slice task tickets.\n"
+}

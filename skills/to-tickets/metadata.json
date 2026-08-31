@@ -1,0 +1,16 @@
+{
+  "skill_name": "user:to-tickets",
+  "display_name": "To Tickets",
+  "active_version_id": "v1",
+  "versions": ["v1"],
+  "triggers": [
+    "break down a plan spec or conversation into vertical slice tracer bullet tickets",
+    "decomposing specs into actionable task tickets",
+    "tracer bullet tickets with explicit blocking edges"
+  ],
+  "negative_triggers": [
+    "executing code tests",
+    "drafting architecture decision records"
+  ],
+  "project_scope_id": null
+}

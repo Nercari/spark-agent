@@ -1,0 +1,16 @@
+{
+  "skill_name": "user:ask-matt",
+  "display_name": "Ask Matt",
+  "active_version_id": "v1",
+  "versions": ["v1"],
+  "triggers": [
+    "ask which engineering skill or workflow fits your situation",
+    "router over engineering skills",
+    "find the right tool or practice for code work"
+  ],
+  "negative_triggers": [
+    "arbitrary user questions unrelated to engineering workflow selection",
+    "financial calculations"
+  ],
+  "project_scope_id": null
+}
