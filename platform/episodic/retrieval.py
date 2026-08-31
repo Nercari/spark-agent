@@ -2,8 +2,8 @@
 
 from typing import List, Optional
 from platform.episodic.backend import LocalFilesystemEpisodicBackend
-from platform.episodic.contracts import EpisodicQuery, RetrievedEvidenceSubset
-from platform.learning.contracts import TaskRunSummary, VerificationStatus, TaskRun
+from platform.episodic.contracts import EpisodicQuery, RetrievedEvidenceSubset, TaskRunSummary
+from platform.learning.contracts import VerificationStatus, TaskRun
 
 
 class EpisodicRetriever:
@@ -49,7 +49,6 @@ class EpisodicRetriever:
         scored = [(s, self._compute_relevance_score(s, query)) for s in filtered]
         scored.sort(key=lambda x: (x[1], x[0].has_recovery, x[0].timestamp), reverse=True)
 
-        # Route-signature deduplication (EXP-06): group by route signature and retain best
         unique_results: List[TaskRunSummary] = []
         seen_route_signatures = set()
 
@@ -77,36 +76,46 @@ class EpisodicRetriever:
 
         relevant_ops = []
         recovery_ev = None
-        for ev in task_run.evidence_records:
-            if operation_id is None or ev.operation_id == operation_id:
+        events = getattr(task_run, "evidence_events", getattr(task_run, "evidence_records", []))
+        for ev in events:
+            ev_is_err = getattr(ev, "is_error", False) or getattr(ev, "event_type", None) == "SUBAGENT_RESULT"
+            ev_is_rec = getattr(ev, "is_recovery", False) or getattr(ev, "event_type", None) == "SUBAGENT_RESULT"
+            op_id = getattr(ev, "operation_id", None)
+            att_id = getattr(ev, "attempt_id", 1)
+            t_name = getattr(ev, "tool_name", "unknown")
+            diff_sum = getattr(ev, "diff_summary", None)
+            ev_id = getattr(ev, "id", getattr(ev, "evidence_id", "unknown"))
+
+            if operation_id is None or op_id == operation_id:
                 relevant_ops.append({
-                    "evidence_id": ev.evidence_id,
-                    "tool_name": ev.tool_name,
-                    "operation_id": ev.operation_id,
-                    "attempt_id": ev.attempt_id,
-                    "is_error": ev.is_error,
-                    "is_recovery": ev.is_recovery,
-                    "diff_summary": ev.diff_summary,
+                    "evidence_id": ev_id,
+                    "tool_name": t_name,
+                    "operation_id": op_id,
+                    "attempt_id": att_id,
+                    "is_error": ev_is_err,
+                    "is_recovery": ev_is_rec,
+                    "diff_summary": diff_sum,
                 })
-            if ev.is_recovery and recovery_ev is None:
+            if ev_is_rec and recovery_ev is None:
                 recovery_ev = {
-                    "evidence_id": ev.evidence_id,
-                    "tool_name": ev.tool_name,
-                    "operation_id": ev.operation_id,
-                    "params": ev.params,
-                    "diff_summary": ev.diff_summary,
+                    "evidence_id": ev_id,
+                    "tool_name": t_name,
+                    "operation_id": op_id,
+                    "params": getattr(ev, "params", getattr(ev, "metadata", {})),
+                    "diff_summary": diff_sum,
                 }
 
+        has_rec = any(getattr(e, "is_recovery", False) for e in events)
         summary_text = (
             f"TaskRun {task_run.id}: goal='{task_run.goal}', status={task_run.verification_status.value}, "
-            f"recovery={task_run.has_recovery()}"
+            f"recovery={has_rec}"
         )
 
         return RetrievedEvidenceSubset(
             task_run_id=task_run.id,
             goal=task_run.goal,
             verification_status=task_run.verification_status,
-            had_recovery=task_run.has_recovery(),
+            had_recovery=has_rec,
             relevant_operations=relevant_ops,
             recovery_evidence=recovery_ev,
             summary_text=summary_text,
