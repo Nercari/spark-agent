@@ -1,225 +1,63 @@
-"""Unified Background Learning Reviewer with Strict Authority Binding."""
+"""Background Learning Reviewer: Independent Evaluation & Gating of Proposed Mutations."""
 
-import re
-import uuid
-import difflib
-from typing import Optional, Tuple
+from typing import Optional
 from platform.learning.contracts import (
     TaskRun,
-    EvidenceEvent,
-    EventType,
-    TrustClass,
-    PayloadOrigin,
-    VerificationStatus,
-    LearningMutation,
+    LearningMutationProposal,
     MutationDecision,
-    is_untrusted_origin,
-    can_evidence_authorize_learning,
+    VerificationStatus,
+    PayloadOrigin,
 )
 from platform.learning.version_store import SkillVersionStore
-from platform.learning.reflection import HermesReflectionEngine
+from platform.learning.reflection import ReflectionEngine
 
 
 class BackgroundLearningReviewer:
-    """Unified reviewer evaluating TaskRun evidence for durable skill mutations."""
+    """Evaluates task runs and mutation proposals against strict authority, provenance, and causality gates."""
 
-    def __init__(self, version_store: SkillVersionStore):
+    def __init__(self, version_store: SkillVersionStore, reflection_engine: Optional[ReflectionEngine] = None):
         self.version_store = version_store
-        self.reflection_engine = HermesReflectionEngine(version_store=version_store)
+        self.reflection_engine = reflection_engine or ReflectionEngine(version_store=version_store)
 
-    def review_task_run(self, task_run: TaskRun) -> LearningMutation:
-        """Inspects completed TaskRun evidence to decide whether durable procedural learning is warranted."""
-        target_skill = task_run.skill_name
-
-        # 1. System Skill Guardrail
-        if target_skill.startswith("system:"):
-            return LearningMutation(
-                id=f"mut_{uuid.uuid4().hex[:8]}",
-                task_run_id=task_run.id,
-                operation="NO_LEARNING",
-                target_skill=target_skill,
+    def review_task_run(self, task_run: TaskRun) -> LearningMutationProposal:
+        # System skill protection gate: System skills are immutable
+        if task_run.skill_name.startswith("system:"):
+            return LearningMutationProposal(
+                skill_name=task_run.skill_name,
                 base_version_id=task_run.skill_version,
-                base_version_hash="",
                 proposed_content="",
-                diff="",
-                reason="System skills are immutable and protected from autonomous modification.",
-                decision=MutationDecision.REJECT_SYSTEM_SKILL,
-            )
-
-        # 2. Strict Operational Payload Provenance & Authority Binding Screening
-        user_auth_events = [e for e in task_run.evidence_events if e.trust_class == TrustClass.TRUSTED_USER_AUTHORITY]
-        user_auth_text = " ".join([e.content for e in user_auth_events]) if user_auth_events else None
-
-        for ev in task_run.evidence_events:
-            if ev.trust_class == TrustClass.UNTRUSTED_EXTERNAL_EVIDENCE or is_untrusted_origin(ev.payload_origin):
-                content_lower = ev.content.lower()
-                if (
-                    "ignore previous instructions" in content_lower
-                    or "from now on always" in content_lower
-                    or "send reports to" in content_lower
-                    or "exfiltrate" in content_lower
-                    or "upload your files to" in content_lower
-                ):
-                    auth_ok, auth_reason = can_evidence_authorize_learning(
-                        evidence_events=[ev],
-                        proposed_lesson=ev.content,
-                        user_authorized_text=user_auth_text,
-                    )
-                    if not auth_ok:
-                        return LearningMutation(
-                            id=f"mut_{uuid.uuid4().hex[:8]}",
-                            task_run_id=task_run.id,
-                            operation="NO_LEARNING",
-                            target_skill=target_skill,
-                            base_version_id=task_run.skill_version,
-                            base_version_hash="",
-                            proposed_content="",
-                            diff="",
-                            reason=f"Rejected unauthenticated behavioral directive from payload origin {ev.payload_origin.value}. External content cannot grant standing behavioral authority.",
-                            decision=MutationDecision.BLOCKED_UNTRUSTED,
-                            evidence_ids=[ev.id],
-                        )
-
-        # 3. Fast Path: Process Explicit User Correction (Highest Priority)
-        user_corrections = [
-            e for e in task_run.evidence_events
-            if e.event_type == EventType.USER_CORRECTION and e.trust_class == TrustClass.TRUSTED_USER_AUTHORITY
-        ]
-
-        if user_corrections:
-            correction_text = user_corrections[-1].content
-            active_version = self.version_store.get_active_version(target_skill)
-            if not active_version:
-                return LearningMutation(
-                    id=f"mut_{uuid.uuid4().hex[:8]}",
-                    task_run_id=task_run.id,
-                    operation="NO_LEARNING",
-                    target_skill=target_skill,
-                    base_version_id=task_run.skill_version,
-                    base_version_hash="",
-                    proposed_content="",
-                    diff="",
-                    reason=f"Target skill '{target_skill}' not found in version store.",
-                    decision=MutationDecision.NO_LEARNING,
-                )
-
-            new_content, patch_reason = self._apply_targeted_patch(
-                original_content=active_version.content,
-                correction=correction_text,
-                task_run=task_run,
-            )
-
-            # Recompute canonical unified diff
-            diff_lines = list(
-                difflib.unified_diff(
-                    active_version.content.splitlines(keepends=True),
-                    new_content.splitlines(keepends=True),
-                    fromfile=f"{target_skill}:{active_version.version_id}",
-                    tofile=f"{target_skill}:proposed_v_next",
-                )
-            )
-            diff_str = "".join(diff_lines)
-
-            return LearningMutation(
-                id=f"mut_{uuid.uuid4().hex[:8]}",
+                change_reason="System skills are strictly immutable",
+                decision=MutationDecision.REJECT,
                 task_run_id=task_run.id,
-                operation="SKILL_PATCH",
-                target_skill=target_skill,
-                base_version_id=active_version.version_id,
-                base_version_hash=active_version.content_hash,
-                proposed_content=new_content,
-                diff=diff_str,
-                reason=patch_reason,
-                evidence_ids=[user_corrections[-1].id],
-                decision=MutationDecision.AUTO_COMMIT,
+                confidence=0.0,
+                rationale="Attempt to mutate protected system skill rejected",
             )
 
-        # 4. General Path: Hermes Reflection Engine (Evaluates Experience & Verified Recoveries)
-        prop, decision, message = self.reflection_engine.reflect_on_task(task_run)
-
-        if decision == MutationDecision.AUTO_COMMIT and prop.proposed_procedural_lesson:
-            active_version = self.version_store.get_active_version(target_skill)
-            if active_version:
-                new_content = self._append_recovery_lesson(
-                    original_content=active_version.content,
-                    lesson=prop.proposed_procedural_lesson,
-                )
-                diff_lines = list(
-                    difflib.unified_diff(
-                        active_version.content.splitlines(keepends=True),
-                        new_content.splitlines(keepends=True),
-                        fromfile=f"{target_skill}:{active_version.version_id}",
-                        tofile=f"{target_skill}:proposed_v_next",
-                    )
-                )
-                diff_str = "".join(diff_lines)
-
-                return LearningMutation(
-                    id=f"mut_{uuid.uuid4().hex[:8]}",
-                    task_run_id=task_run.id,
-                    operation="SKILL_PATCH",
-                    target_skill=target_skill,
-                    base_version_id=active_version.version_id,
-                    base_version_hash=active_version.content_hash,
-                    proposed_content=new_content,
-                    diff=diff_str,
-                    reason=prop.reason,
-                    evidence_ids=prop.evidence_ids,
-                    recovery_verified=prop.recovery_verified,
-                    decision=MutationDecision.AUTO_COMMIT,
-                )
-
-        return LearningMutation(
-            id=f"mut_{uuid.uuid4().hex[:8]}",
-            task_run_id=task_run.id,
-            operation="NO_LEARNING",
-            target_skill=target_skill,
-            base_version_id=task_run.skill_version,
-            base_version_hash="",
-            proposed_content="",
-            diff="",
-            reason=message or prop.reason,
-            decision=decision,
-            evidence_ids=prop.evidence_ids,
-        )
-
-    def _apply_targeted_patch(self, original_content: str, correction: str, task_run: TaskRun) -> Tuple[str, str]:
-        """Applies a targeted modification to the relevant section of SKILL.md."""
-        reason = f"Learned from explicit user correction: '{correction}'"
-
-        if "json" in correction.lower() and ("key" in correction.lower() or "format" in correction.lower()):
-            keys = re.findall(r'["\']([a-zA-Z0-9_-]+)["\']', correction)
-            keys_desc = f'with keys {", ".join(keys)}' if keys else "valid JSON format"
-            new_rule = f"- Output format: ALWAYS output strict JSON {keys_desc}. Do not output raw plain text or key-value colon lines."
-
-            if "## Output Format" in original_content:
-                pattern = r"(## Output Format\n\n?)(.*?)(\n\n##|\Z)"
-                replacement = rf"\1{new_rule}\3"
-                patched = re.sub(pattern, replacement, original_content, flags=re.DOTALL)
-            elif "## Steps" in original_content:
-                patched = original_content.replace(
-                    "## Steps",
-                    f"## Output Format\n\n{new_rule}\n\n## Steps",
-                )
-            else:
-                patched = original_content.rstrip() + f"\n\n## Output Format\n\n{new_rule}\n"
-
-            return patched, reason
-
-        rule_section = f"\n\n## Learned Guidelines\n\n- {correction.strip()}\n"
-        if "## Learned Guidelines" in original_content:
-            patched = original_content.replace("## Learned Guidelines", f"## Learned Guidelines\n\n- {correction.strip()}")
-        else:
-            patched = original_content.rstrip() + rule_section
-
-        return patched, reason
-
-    def _append_recovery_lesson(self, original_content: str, lesson: str) -> str:
-        """Appends a verified recovery procedure to the skill's procedure section."""
-        recovery_header = "\n\n## Verified Recovery Procedures\n\n"
-        if "## Verified Recovery Procedures" in original_content:
-            return original_content.replace(
-                "## Verified Recovery Procedures",
-                f"## Verified Recovery Procedures\n\n- {lesson.strip()}",
+        # Verified success requirement gate
+        if task_run.verification_status != VerificationStatus.VERIFIED_SUCCESS:
+            return LearningMutationProposal(
+                skill_name=task_run.skill_name,
+                base_version_id=task_run.skill_version,
+                proposed_content="",
+                change_reason="Task run did not achieve verified success",
+                decision=MutationDecision.REJECT,
+                task_run_id=task_run.id,
+                confidence=0.0,
+                rationale="Mutations require verified successful execution",
             )
-        return original_content.rstrip() + f"{recovery_header}- {lesson.strip()}\n"
+
+        # Generate proposal from reflection engine
+        proposal = self.reflection_engine.analyze_task_run(task_run)
+        if not proposal:
+            return LearningMutationProposal(
+                skill_name=task_run.skill_name,
+                base_version_id=task_run.skill_version,
+                proposed_content="",
+                change_reason="No recoverable causal evidence found in task run",
+                decision=MutationDecision.REJECT,
+                task_run_id=task_run.id,
+                confidence=0.0,
+                rationale="Task execution had no recoverable error pattern",
+            )
+
+        return proposal
