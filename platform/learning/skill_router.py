@@ -34,7 +34,6 @@ class ProceduralSkillParser:
         triggers = []
         negative_triggers = []
 
-        # 1. Parse YAML frontmatter if present
         if content.startswith("---"):
             parts = content.split("---", 2)
             if len(parts) >= 3:
@@ -47,7 +46,6 @@ class ProceduralSkillParser:
                 except Exception:
                     pass
 
-        # 2. Extract 'When to Use' and trigger keywords
         wtu_match = re.search(r"## When to Use\s*\n(.*?)(?=\n##|\Z)", content, re.DOTALL | re.IGNORECASE)
         if wtu_match:
             for line in wtu_match.group(1).split("\n"):
@@ -55,7 +53,6 @@ class ProceduralSkillParser:
                 if line:
                     triggers.append(line)
 
-        # 3. Extract Gotchas / Negative boundaries
         gotchas_match = re.search(r"## (?:Gotchas|When NOT to Use)\s*\n(.*?)(?=\n##|\Z)", content, re.DOTALL | re.IGNORECASE)
         if gotchas_match:
             for line in gotchas_match.group(1).split("\n"):
@@ -107,7 +104,6 @@ class ProceduralSkillRouter:
                     content = f.read()
                 manifest = ProceduralSkillParser.parse_skill_md(content, full_skill_name)
 
-                # Overlay metadata.json if present
                 if os.path.exists(meta_path):
                     try:
                         with open(meta_path, "r", encoding="utf-8") as mf:
@@ -128,7 +124,6 @@ class ProceduralSkillRouter:
         task_goal: str,
         project_scope_id: Optional[str] = None,
     ) -> Tuple[Optional[SkillManifest], float, str]:
-        """Matches a task goal to the best fitting active procedural skill."""
         best_manifest: Optional[SkillManifest] = None
         best_score = 0.0
         match_reason = "No matching skill found"
@@ -136,11 +131,9 @@ class ProceduralSkillRouter:
         goal_tokens = set(re.findall(r"\w+", task_goal.lower()))
 
         for name, manifest in self.manifests.items():
-            # 1. Scope Isolation Gate: If skill is project-scoped, it cannot match a different project
             if manifest.project_scope_id is not None and manifest.project_scope_id != project_scope_id:
                 continue
 
-            # 2. Negative Trigger Rejection Gate
             rejected = False
             for neg in manifest.negative_triggers:
                 neg_tokens = set(re.findall(r"\w+", neg.lower()))
@@ -150,7 +143,6 @@ class ProceduralSkillRouter:
             if rejected:
                 continue
 
-            # 3. Trigger & Semantic Scoring
             score = 0.0
             for trig in manifest.triggers:
                 trig_tokens = set(re.findall(r"\w+", trig.lower()))
@@ -161,12 +153,10 @@ class ProceduralSkillRouter:
                     sim = overlap / len(trig_tokens)
                     score = max(score, sim)
 
-            # Boost exact name matching
             clean_name = name.split(":", 1)[-1].replace("-", " ")
             if clean_name.lower() in task_goal.lower():
                 score = max(score, 0.8)
 
-            # Specialization boost: specific domain skills outrank general meta-routers
             if score >= 0.3:
                 if name not in ["user:ask-matt", "system:onboarding"]:
                     score += 0.2

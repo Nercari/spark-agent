@@ -6,7 +6,7 @@ import shutil
 import threading
 from typing import Dict, List, Optional, Tuple
 from platform.learning.contracts import (
-    SkillVersionMetadata,
+    SkillVersion,
     generate_sha256,
 )
 
@@ -34,8 +34,7 @@ class SkillVersionStore:
         skill_name: str,
         initial_content: str,
         change_reason: str = "Initial baseline",
-        author: str = "system",
-    ) -> SkillVersionMetadata:
+    ) -> SkillVersion:
         with self._lock:
             sdir = self._get_skill_dir(skill_name)
             vdir = self._get_versions_dir(skill_name)
@@ -49,19 +48,21 @@ class SkillVersionStore:
                 return self.get_version(skill_name, active_id)
 
             c_hash = generate_sha256(initial_content)
-            v1_meta = SkillVersionMetadata(
+            v1_ver = SkillVersion(
                 version_id="v1",
+                skill_name=skill_name,
                 parent_version_id=None,
-                created_at="2026-08-25T00:00:00Z",
+                content=initial_content,
                 content_hash=c_hash,
-                author=author,
+                created_at="2026-08-25T00:00:00Z",
                 change_reason=change_reason,
+                status="active",
             )
 
             # 1. Save v1 version file
             v1_path = os.path.join(vdir, "v1.json")
             with open(v1_path, "w", encoding="utf-8") as f:
-                json.dump({"metadata": v1_meta.to_dict(), "content": initial_content}, f, indent=2)
+                json.dump(v1_ver.to_dict(), f, indent=2)
 
             # 2. Write active SKILL.md
             skill_md_path = os.path.join(sdir, "SKILL.md")
@@ -77,7 +78,7 @@ class SkillVersionStore:
             with open(mpath, "w", encoding="utf-8") as f:
                 json.dump(meta_dict, f, indent=2)
 
-            return v1_meta
+            return v1_ver
 
     def get_current_skill_content(self, skill_name: str) -> Optional[str]:
         sdir = self._get_skill_dir(skill_name)
@@ -95,13 +96,13 @@ class SkillVersionStore:
             data = json.load(f)
             return data.get("active_version_id")
 
-    def get_version(self, skill_name: str, version_id: str) -> Optional[SkillVersionMetadata]:
+    def get_version(self, skill_name: str, version_id: str) -> Optional[SkillVersion]:
         vpath = os.path.join(self._get_versions_dir(skill_name), f"{version_id}.json")
         if not os.path.exists(vpath):
             return None
         with open(vpath, "r", encoding="utf-8") as f:
             data = json.load(f)
-            return SkillVersionMetadata.from_dict(data["metadata"])
+            return SkillVersion.from_dict(data)
 
     def append_version(
         self,
@@ -110,11 +111,8 @@ class SkillVersionStore:
         change_reason: str,
         expected_base_version_id: str,
         task_run_id: Optional[str] = None,
-        evidence_ids: Optional[List[str]] = None,
-        confidence: float = 1.0,
-        unified_diff: Optional[str] = None,
-        author: str = "spark",
-    ) -> Tuple[bool, str, Optional[SkillVersionMetadata]]:
+        diff: Optional[str] = None,
+    ) -> Tuple[bool, str, Optional[SkillVersion]]:
         with self._lock:
             mpath = self._get_metadata_path(skill_name)
             if not os.path.exists(mpath):
@@ -137,22 +135,22 @@ class SkillVersionStore:
                 return False, f"Version overwrite rejected: {new_version_id} already exists.", None
 
             c_hash = generate_sha256(new_content)
-            new_meta = SkillVersionMetadata(
+            new_ver = SkillVersion(
                 version_id=new_version_id,
+                skill_name=skill_name,
                 parent_version_id=active_ver,
-                created_at="2026-08-25T12:00:00Z",
+                content=new_content,
                 content_hash=c_hash,
-                author=author,
+                created_at="2026-08-25T12:00:00Z",
+                created_from_task_run_id=task_run_id,
                 change_reason=change_reason,
-                task_run_id=task_run_id,
-                evidence_ids=evidence_ids or [],
-                confidence=confidence,
-                unified_diff=unified_diff,
+                diff=diff,
+                status="active",
             )
 
             # 1. Write immutable version file
             with open(vpath, "w", encoding="utf-8") as f:
-                json.dump({"metadata": new_meta.to_dict(), "content": new_content}, f, indent=2)
+                json.dump(new_ver.to_dict(), f, indent=2)
 
             # 2. Write active SKILL.md
             sdir = self._get_skill_dir(skill_name)
@@ -167,13 +165,12 @@ class SkillVersionStore:
             with open(mpath, "w", encoding="utf-8") as f:
                 json.dump(meta, f, indent=2)
 
-            return True, f"Successfully promoted {new_version_id}", new_meta
+            return True, f"Successfully promoted {new_version_id}", new_ver
 
     def rollback_version(
         self,
         skill_name: str,
         target_version_id: str,
-        reason: str = "Automatic rollback on regression",
     ) -> Tuple[bool, str]:
         with self._lock:
             mpath = self._get_metadata_path(skill_name)
