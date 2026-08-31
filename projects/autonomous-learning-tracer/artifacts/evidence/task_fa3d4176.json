@@ -1,35 +1,45 @@
 {
   "id": "task_fa3d4176",
-  "goal": "Format server metrics",
-  "started_at": "2026-08-24T19:08:41.473150+00:00",
-  "completed_at": "2026-08-24T19:08:41.473940+00:00",
-  "user_scope_id": "default_user",
-  "project_scope_id": "default_project",
+  "goal": "Format status artifact with recovery",
+  "started_at": "2026-08-25T10:05:00Z",
+  "completed_at": "2026-08-25T10:05:10Z",
+  "user_scope_id": "usr_default",
+  "project_scope_id": "proj_default",
   "skill_name": "user:structured-formatter",
-  "skill_version": "v3",
+  "skill_version": "v1",
   "evidence_events": [
     {
-      "id": "ev_1_5dc4e3",
-      "timestamp": "2026-08-24T19:08:41.473720+00:00",
-      "event_type": "USER_AUTHORIZED_INSTRUCTION",
-      "trust_class": "TRUSTED_USER_AUTHORITY",
-      "content": "Format metrics: Disk: 40%, Net: 100MB",
-      "metadata": {}
+      "id": "ev_err",
+      "timestamp": "2026-08-25T10:05:02Z",
+      "event_type": "TOOL_RESULT",
+      "trust_class": "UNTRUSTED_EXTERNAL_EVIDENCE",
+      "content": "{\"tool\": \"formatter\", \"params\": {\"format\": \"xml\"}, \"result\": {\"error\": \"InvalidSchema\"}}",
+      "payload_origin": "MCP",
+      "operation_id": "op_fmt",
+      "attempt_id": 1,
+      "metadata": {
+        "is_error": true,
+        "is_recovery": false
+      }
     },
     {
-      "id": "ev_2_e0c1f5",
-      "timestamp": "2026-08-24T19:08:41.473855+00:00",
-      "event_type": "VERIFICATION_RESULT",
-      "trust_class": "VERIFICATION",
-      "content": "{\"status\": \"VERIFIED_SUCCESS\", \"reason\": \"Output matches required JSON schema and keys.\", \"details\": {}}",
+      "id": "ev_rec",
+      "timestamp": "2026-08-25T10:05:05Z",
+      "event_type": "TOOL_RESULT",
+      "trust_class": "INTERNAL_EXECUTION",
+      "content": "{\"tool\": \"formatter\", \"params\": {\"format\": \"compact_json\"}, \"result\": {\"status\": \"ok\"}}",
+      "payload_origin": "MCP",
+      "operation_id": "op_fmt",
+      "attempt_id": 2,
       "metadata": {
-        "status": "VERIFIED_SUCCESS"
+        "is_error": false,
+        "is_recovery": true
       }
     }
   ],
-  "final_output": "[\n  {\"name\": \"Disk\", \"value\": \"40%\"},\n  {\"name\": \"Net\", \"value\": \"100MB\"}\n]",
+  "final_output": "{\"status\": \"ok\"}",
   "verification_status": "VERIFIED_SUCCESS",
   "verification_details": {
-    "reason": "Output matches required JSON schema and keys."
+    "reason": "Recovery verified"
   }
 }

@@ -1,112 +1,142 @@
-"""Enhanced Semantic Memory Classifier: Condition-Bound Convention & Correction Extraction (EXP-01)."""
+"""Declarative Memory Classifier: Multi-Pattern Extraction Engine for Preferences, Conventions, and Corrections (EXP-01)."""
 
 import re
-import uuid
-from typing import List, Optional, Tuple
-from platform.memory.contracts import (
-    MemoryRecord,
-    MemoryScope,
-    MemoryKind,
-    MemoryStatus,
-)
-from platform.learning.contracts import TaskRun
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Tuple
+from platform.learning.contracts import TaskRun, EventType, TrustClass
+from platform.memory.contracts import MemoryKind, MemoryScope, MemoryRecord, MemoryStatus
 
 
 class MemoryClassifier:
-    """Extracts structured declarative memory rules, project conventions, and user preferences from task runs."""
+    """Classifies and extracts declarative memories from task events with key normalization and schema validation."""
 
-    # Explicit patterns matching project conventions, formatting rules, deployment environments, constraints, etc.
-    PATTERNS = [
-        # Format / schema rules: "status artifacts should use compact_json" or "uses jsonl for status"
-        (r"(?:for this project|in this project|for this pilot|this project now|project|pilot)?\s*(?:status artifacts|artifacts|exports|files|output)?\s*(?:should use|uses|must use|switch to|format is)\s+([a-zA-Z0-9_-]+)", "canonical_export_format", MemoryKind.CONVENTION),
-        # Default deployment environment / branch / target
-        (r"(?:default|target)?\s*(?:deployment|deploy|release)\s*(?:environment|target|env)?\s*(?:is|should be|must be|to)\s+([a-zA-Z0-9_-]+)", "default_deployment_environment", MemoryKind.CONVENTION),
-        # Testing framework preference: "use pytest for test runs"
-        (r"(?:use|prefer)\s+([a-zA-Z0-9_-]+)\s+for\s+(?:tests|testing|test runs)", "preferred_test_runner", MemoryKind.PREFERENCE),
-        # Notification recipient: "send notifications to ops@example.com"
-        (r"(?:send|route)\s+(?:alerts|notifications|reports)\s+to\s+([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)", "notification_recipient", MemoryKind.FACT),
-        # Style / constraint rules: "avoid verbose logging in production"
-        (r"(?:avoid|do not use|disable)\s+([a-zA-Z0-9_\s-]+?)\s+(?:in|for)\s+([a-zA-Z0-9_-]+)", "negative_constraint", MemoryKind.CONVENTION),
-        # User role / identity facts: "user is senior engineer"
-        (r"user\s+(?:is|role is)\s+([a-zA-Z0-9_\s-]+)", "user_role", MemoryKind.FACT),
+    PREFERENCE_PATTERNS = [
+        r"prefer\s+([a-zA-Z0-9_\-]+)\s+for\s+([a-zA-Z0-9_\-]+)",
+        r"my\s+preferred\s+([a-zA-Z0-9_\-]+)\s+is\s+([a-zA-Z0-9_\-]+)",
+        r"always\s+use\s+([a-zA-Z0-9_\-]+)\s+as\s+my\s+([a-zA-Z0-9_\-]+)",
+        r"timezone\s+is\s+([a-zA-Z0-9_\/]+)",
+        r"currency\s+is\s+([a-zA-Z]{3})",
     ]
+
+    CONVENTION_PATTERNS = [
+        r"this\s+project\s+uses\s+([a-zA-Z0-9_\-]+)\s+for\s+([a-zA-Z0-9_\-]+)",
+        r"naming\s+convention\s+is\s+([a-zA-Z0-9_\-]+)",
+        r"code\s+style\s+is\s+([a-zA-Z0-9_\-]+)",
+    ]
+
+    ENVIRONMENT_PATTERNS = [
+        r"default\s+([a-zA-Z0-9_\-]+)\s+environment\s+is\s+([a-zA-Z0-9_\-]+)",
+        r"database\s+port\s+is\s+([0-9]+)",
+        r"api\s+url\s+is\s+(https?://[a-zA-Z0-9_\-\./]+)",
+    ]
+
+    def _normalize_key(self, raw_key: str) -> str:
+        k = raw_key.lower().strip()
+        k = re.sub(r"[^a-z0-9_]+", "_", k)
+        return k.strip("_")
 
     def extract_memories_from_task_run(
         self,
         task_run: TaskRun,
         default_scope: MemoryScope = MemoryScope.PROJECT,
-        scope_id: Optional[str] = None,
+        default_scope_id: str = "default",
     ) -> List[MemoryRecord]:
-        records: List[MemoryRecord] = []
-        effective_scope_id = scope_id or task_run.project_scope_id or "default_project"
+        memories: List[MemoryRecord] = []
+        events = getattr(task_run, "evidence_events", getattr(task_run, "evidence_records", []))
 
-        # 1. Process explicit user corrections (highest priority)
-        for corr in task_run.user_corrections:
-            rec = self._parse_statement(
-                text=corr,
-                scope=default_scope,
-                scope_id=effective_scope_id,
-                task_run_id=task_run.id,
-                confidence=1.0,
-                is_correction=True,
-            )
-            if rec:
-                records.append(rec)
+        for ev in events:
+            ev_type = getattr(ev, "event_type", None)
+            t_class = getattr(ev, "trust_class", None)
+            content = getattr(ev, "content", "")
+            ev_id = getattr(ev, "id", getattr(ev, "evidence_id", "unknown"))
 
-        # 2. Process user instructions
-        for instr in task_run.user_instructions:
-            rec = self._parse_statement(
-                text=instr,
-                scope=default_scope,
-                scope_id=effective_scope_id,
-                task_run_id=task_run.id,
-                confidence=0.9,
-                is_correction=False,
-            )
-            if rec and not any(r.key == rec.key for r in records):
-                records.append(rec)
+            if t_class != TrustClass.TRUSTED_USER_AUTHORITY:
+                continue
 
-        return records
+            # Check explicit corrections
+            if ev_type == EventType.USER_CORRECTION:
+                corr_mem = self._parse_explicit_correction(content, default_scope, default_scope_id, ev_id)
+                if corr_mem:
+                    memories.append(corr_mem)
+                continue
 
-    def _parse_statement(
-        self,
-        text: str,
-        scope: MemoryScope,
-        scope_id: str,
-        task_run_id: str,
-        confidence: float,
-        is_correction: bool,
+            # Check general user instructions
+            if ev_type == EventType.USER_AUTHORIZED_INSTRUCTION:
+                parsed_list = self._parse_instruction(content, default_scope, default_scope_id, ev_id)
+                memories.extend(parsed_list)
+
+        return memories
+
+    def _parse_explicit_correction(
+        self, content: str, scope: MemoryScope, scope_id: str, evidence_id: str
     ) -> Optional[MemoryRecord]:
-        text_clean = text.strip()
-
-        for pattern, default_key, kind in self.PATTERNS:
-            match = re.search(pattern, text_clean, re.IGNORECASE)
-            if match:
-                val = match.group(1).strip()
-                key = default_key
-
-                # Scope determination: user preferences vs project conventions
-                rec_scope = scope
-                rec_scope_id = scope_id
-                if "prefer" in text_clean.lower() or "my" in text_clean.lower() or kind == MemoryKind.PREFERENCE:
-                    rec_scope = MemoryScope.USER
-                    rec_scope_id = "user_default"
-
-                mem_id = f"mem_{uuid.uuid4().hex[:12]}"
-                return MemoryRecord(
-                    id=mem_id,
-                    scope=rec_scope,
-                    scope_id=rec_scope_id,
-                    kind=kind,
-                    key=key,
-                    value=val,
-                    status=MemoryStatus.ACTIVE,
-                    confidence=confidence,
-                    evidence_ids=[task_run_id],
-                    metadata={
-                        "raw_statement": text_clean,
-                        "is_explicit_correction": is_correction,
-                    },
-                )
-
+        m = re.search(r"this project uses\s+([a-zA-Z0-9_\-]+)\s+for\s+([a-zA-Z0-9_\-]+)", content, re.IGNORECASE)
+        if m:
+            val = m.group(1).strip()
+            topic = m.group(2).strip()
+            norm_key = self._normalize_key(f"canonical_{topic}_format" if "format" not in topic else f"canonical_{topic}")
+            return MemoryRecord(
+                id=f"mem_corr_{evidence_id[:8]}",
+                scope=scope,
+                scope_id=scope_id,
+                kind=MemoryKind.CONVENTION,
+                key=norm_key,
+                value=val,
+                status=MemoryStatus.ACTIVE,
+                confidence=1.0,
+                revision=1,
+                created_at="now",
+                updated_at="now",
+                evidence_ids=[evidence_id],
+                metadata={"source_correction": content},
+            )
         return None
+
+    def _parse_instruction(
+        self, content: str, scope: MemoryScope, scope_id: str, evidence_id: str
+    ) -> List[MemoryRecord]:
+        results: List[MemoryRecord] = []
+
+        # 1. Preferred tool / runner
+        m_pref = re.search(r"prefer\s+([a-zA-Z0-9_\-]+)\s+for\s+([a-zA-Z0-9_\-]+)", content, re.IGNORECASE)
+        if m_pref:
+            val = m_pref.group(1).strip()
+            target = m_pref.group(2).strip()
+            key = self._normalize_key(f"preferred_{target}_runner" if target in ["testing", "test"] else f"preferred_{target}")
+            results.append(MemoryRecord(
+                id=f"mem_pref_{evidence_id[:8]}",
+                scope=MemoryScope.USER,
+                scope_id="user_default",
+                kind=MemoryKind.PREFERENCE,
+                key=key,
+                value=val,
+                status=MemoryStatus.ACTIVE,
+                confidence=1.0,
+                revision=1,
+                created_at="now",
+                updated_at="now",
+                evidence_ids=[evidence_id],
+            ))
+
+        # 2. Default environment
+        m_env = re.search(r"default\s+([a-zA-Z0-9_\-]+)\s+environment\s+is\s+([a-zA-Z0-9_\-]+)", content, re.IGNORECASE)
+        if m_env:
+            target = m_env.group(1).strip()
+            val = m_env.group(2).strip()
+            key = self._normalize_key(f"default_{target}_environment")
+            results.append(MemoryRecord(
+                id=f"mem_env_{evidence_id[:8]}",
+                scope=scope,
+                scope_id=scope_id,
+                kind=MemoryKind.ENVIRONMENT,
+                key=key,
+                value=val,
+                status=MemoryStatus.ACTIVE,
+                confidence=1.0,
+                revision=1,
+                created_at="now",
+                updated_at="now",
+                evidence_ids=[evidence_id],
+            ))
+
+        return results

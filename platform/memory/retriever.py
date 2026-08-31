@@ -1,41 +1,44 @@
-"""Memory Retriever with Utility-Aware Ranking & Selective Relevance Gating (EXP-04 & EXP-05)."""
+"""Memory Retriever: Relevance Scoring, Utility Ranking, and Staleness Deprioritization (EXP-04 & EXP-05)."""
 
-import math
-from datetime import datetime, timezone
 from typing import List, Optional
-from platform.memory.contracts import MemoryRecord, MemoryScope, MemoryStatus
+from platform.memory.contracts import MemoryRecord, MemoryScope, MemoryKind, MemoryStatus
 from platform.memory.store import MemoryStore
 
 
 class MemoryRetriever:
-    """Retrieves and ranks active declarative memories based on relevance, utility, and recency/staleness."""
+    """Retrieves active declarative memories prioritized by task-goal relevance, recency, and utility."""
 
     def __init__(self, memory_store: MemoryStore):
         self.memory_store = memory_store
 
-    def _compute_utility_score(self, memory: MemoryRecord, task_goal: Optional[str] = None) -> float:
-        score = float(memory.confidence)
+    def _compute_relevance_score(self, record: MemoryRecord, task_goal: Optional[str] = None) -> float:
+        score = 0.0
 
-        # Usage & verification boost
-        score += min(memory.use_count * 0.2, 1.0)
-
-        # Relevance scoring with goal keywords
-        if task_goal:
-            goal_lower = task_goal.lower()
-            key_clean = memory.key.replace("_", " ").lower()
-            if any(term in goal_lower for term in key_clean.split()):
-                score += 1.5
-            if str(memory.value).lower() in goal_lower:
-                score += 1.0
-
-        # Scope precedence: Project scope outranks User scope on conflicting keys
-        if memory.scope == MemoryScope.PROJECT:
+        # Universal conventions and preferences have high base utility
+        if record.kind in [MemoryKind.CONVENTION, MemoryKind.PREFERENCE]:
+            score += 1.0
+        elif record.kind in [MemoryKind.ENVIRONMENT, MemoryKind.FACT]:
             score += 0.5
 
-        # Staleness decay penalty (EXP-05) if memory hasn't been used and has accumulated conflicts
-        conflicts = memory.metadata.get("candidate_conflicts", [])
-        if len(conflicts) > 0:
-            score -= (len(conflicts) * 0.4)
+        # Goal token match boost
+        if task_goal:
+            goal_tokens = set(task_goal.lower().split())
+            key_tokens = set(record.key.lower().replace("_", " ").split())
+            val_tokens = set(str(record.value).lower().replace("_", " ").split())
+            if (key_tokens | val_tokens) & goal_tokens:
+                score += 0.8
+
+        # Recency utility boost
+        if record.last_used_at:
+            score += 0.2
+
+        # Staleness & conflict penalties
+        conflicts = record.metadata.get("candidate_conflicts", [])
+        if conflicts:
+            score -= (len(conflicts) * 0.1)
+
+        if record.status == MemoryStatus.STALE or record.metadata.get("revalidation_needed"):
+            score -= 0.4
 
         return score
 
@@ -46,36 +49,23 @@ class MemoryRetriever:
         task_goal: Optional[str] = None,
         max_budget: int = 20,
     ) -> List[MemoryRecord]:
-        records: List[MemoryRecord] = []
+        candidates: List[MemoryRecord] = []
 
         if project_scope_id:
-            proj_mems = self.memory_store.retrieve_memories(
+            candidates.extend(self.memory_store.retrieve_memories(
                 scope=MemoryScope.PROJECT,
                 scope_id=project_scope_id,
                 status=MemoryStatus.ACTIVE,
-            )
-            records.extend(proj_mems)
+            ))
 
         if user_scope_id:
-            user_mems = self.memory_store.retrieve_memories(
+            candidates.extend(self.memory_store.retrieve_memories(
                 scope=MemoryScope.USER,
                 scope_id=user_scope_id,
                 status=MemoryStatus.ACTIVE,
-            )
-            records.extend(user_mems)
+            ))
 
-        # Deduplicate on key prioritizing higher authority (Project > User)
-        key_map = {}
-        for r in records:
-            if r.key not in key_map:
-                key_map[r.key] = r
-            else:
-                existing = key_map[r.key]
-                if existing.scope == MemoryScope.USER and r.scope == MemoryScope.PROJECT:
-                    key_map[r.key] = r
+        scored = [(m, self._compute_relevance_score(m, task_goal)) for m in candidates]
+        scored.sort(key=lambda x: (x[1], x[0].updated_at), reverse=True)
 
-        deduped = list(key_map.values())
-        scored = [(r, self._compute_utility_score(r, task_goal=task_goal)) for r in deduped]
-        scored.sort(key=lambda x: x[1], reverse=True)
-
-        return [r for r, score in scored[:max_budget]]
+        return [x[0] for x in scored[:max_budget]]

@@ -1,15 +1,15 @@
-"""Memory Context Manager & Ingestion Pipeline with Selective Relevance Gating (EXP-04)."""
+"""Memory Context Pipeline: Ingestion and Task Context Injection."""
 
 from typing import List, Optional, Tuple
-from platform.learning.contracts import TaskRun, VerificationStatus
-from platform.memory.contracts import MemoryRecord, MemoryScope, MemoryStatus
+from platform.learning.contracts import TaskRun
+from platform.memory.contracts import MemoryRecord, MemoryScope
 from platform.memory.store import MemoryStore
 from platform.memory.classifier import MemoryClassifier
 from platform.memory.retriever import MemoryRetriever
 
 
 class MemoryContextManager:
-    """Coordinates memory injection at task startup and memory extraction at task completion."""
+    """Manages memory retrieval, relevance gating, and persistence across task lifecycles."""
 
     def __init__(
         self,
@@ -30,49 +30,46 @@ class MemoryContextManager:
         task_goal: Optional[str] = None,
         max_memory_budget: int = 20,
     ) -> Tuple[str, List[MemoryRecord]]:
-        """Retrieves and formats relevant active declarative memories into prompt context string."""
-        memories = self.retriever.retrieve_task_context_memories(
+        effective_user_scope = user_scope_id
+        if effective_user_scope is None and self.allow_synthetic_user_fallback:
+            effective_user_scope = "usr_synthetic"
+
+        injected = self.retriever.retrieve_task_context_memories(
             project_scope_id=project_scope_id,
-            user_scope_id=user_scope_id,
+            user_scope_id=effective_user_scope,
             task_goal=task_goal,
             max_budget=max_memory_budget,
         )
 
-        if not memories:
-            return "", []
+        lines = ["## Authoritative Context Memories"]
+        for m in injected:
+            lines.append(f"- [{m.scope.value}:{m.kind.value}] {m.key}: {m.value}")
 
-        lines = ["## Active Project Conventions & Preferences"]
-        for m in memories:
-            lines.append(f"- [{m.scope.value}] `{m.key}`: {m.value}")
-
-        context_str = "\n".join(lines) + "\n"
-        return context_str, memories
+        context_str = "\n".join(lines)
+        return context_str, injected
 
     def process_task_for_memory_learning(
         self,
         task_run: TaskRun,
     ) -> List[MemoryRecord]:
-        """Extracts and commits new or updated declarative memory records from a completed task run."""
-        learned = self.classifier.extract_memories_from_task_run(
-            task_run=task_run,
+        extracted = self.classifier.extract_memories_from_task_run(
+            task_run,
             default_scope=MemoryScope.PROJECT,
-            scope_id=task_run.project_scope_id,
+            default_scope_id=task_run.project_scope_id,
         )
 
-        persisted: List[MemoryRecord] = []
-        for mem in learned:
-            ok, msg, committed_rec = self.memory_store.create_or_update_memory(
+        saved = []
+        for mem in extracted:
+            ok, msg, persisted = self.memory_store.create_or_update_memory(
                 scope=mem.scope,
                 scope_id=mem.scope_id,
                 kind=mem.kind,
                 key=mem.key,
                 value=mem.value,
-                confidence=mem.confidence,
-                evidence_ids=mem.evidence_ids,
-                metadata=mem.metadata,
                 is_trusted_user_origin=True,
+                metadata=mem.metadata,
             )
-            if ok and committed_rec:
-                persisted.append(committed_rec)
+            if ok and persisted:
+                saved.append(persisted)
 
-        return persisted
+        return saved
