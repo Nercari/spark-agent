@@ -1,11 +1,12 @@
 {
-  "metadata": {
-    "version_id": "v1",
-    "parent_version_id": null,
-    "created_at": "2026-08-25T00:00:00Z",
-    "content_hash": "21092c63a88c4fb1d2e3192d402fcad4559e7cd2",
-    "author": "system",
-    "change_reason": "Initial baseline manifest"
-  },
-  "content": "---\nname: ask-matt\ndescription: Ask which engineering skill or workflow fits your situation. A router over engineering skills to find the right tool or practice for code work.\n---\n# Ask Matt\n\nRoute engineering questions to appropriate skills.\n"
+  "version_id": "v1",
+  "skill_name": "user:ask-matt",
+  "parent_version_id": null,
+  "content": "---\nname: ask-matt\ndescription: Ask which engineering skill or workflow fits your situation. A router over engineering skills to find the right tool or practice for code work.\n---\n# Ask Matt\n\nUse this skill as an advisory router to identify which engineering practice, workflow, or skill best suits a code-related situation.\n\n## When to Use\n- When uncertain which engineering skill applies to a development task\n- Routing complex software engineering workflows\n\n## When NOT to Use\n- When the specific engineering task is already unambiguous (e.g. direct bug fix, writing tests)\n- Non-software engineering tasks\n",
+  "content_hash": "21092c63a88c4fb1d2e3192d402fcad4559e7cd2",
+  "created_at": "2026-08-25T00:00:00Z",
+  "created_from_task_run_id": null,
+  "change_reason": "Initial baseline",
+  "diff": null,
+  "status": "active"
 }

@@ -1,11 +1,12 @@
 {
-  "metadata": {
-    "version_id": "v1",
-    "parent_version_id": null,
-    "created_at": "2026-08-25T00:00:00Z",
-    "content_hash": "edaa2f846435656e95e4ecc95b18f59d14802f1b",
-    "author": "system",
-    "change_reason": "Initial baseline manifest"
-  },
-  "content": "---\nname: to-spec\ndescription: Synthesize current conversation context and codebase understanding into a structured feature specification and publish it to the issue tracker. Use when drafting a spec or PRD.\n---\n# To Spec\n\nDraft structured feature specifications.\n"
+  "version_id": "v1",
+  "skill_name": "user:to-spec",
+  "parent_version_id": null,
+  "content": "---\nname: to-spec\ndescription: Synthesize current conversation context and codebase understanding into a structured feature specification and publish it to the issue tracker. Use when drafting a spec or PRD.\n---\n# To Spec\n\nUse this skill to synthesize requirements and context into a structured feature specification.\n\n## When to Use\n- Synthesizing conversation context into a structured feature spec / PRD\n- Creating actionable technical specifications before ticket breakdown\n\n## When NOT to Use\n- Writing code directly without needing a spec\n",
+  "content_hash": "edaa2f846435656e95e4ecc95b18f59d14802f1b",
+  "created_at": "2026-08-25T00:00:00Z",
+  "created_from_task_run_id": null,
+  "change_reason": "Initial baseline",
+  "diff": null,
+  "status": "active"
 }

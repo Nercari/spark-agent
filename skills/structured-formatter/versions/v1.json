@@ -1,11 +1,12 @@
 {
-  "metadata": {
-    "version_id": "v1",
-    "parent_version_id": null,
-    "created_at": "2026-08-25T00:00:00Z",
-    "content_hash": "ec47541e67a0703069cffb5613fb77fdd455ae63",
-    "author": "system",
-    "change_reason": "Initial baseline manifest"
-  },
-  "content": "---\nname: structured-formatter\ndescription: Formats incoming server, hardware, and system metrics for structured reporting. Use when converting raw telemetry strings or system metrics into standardized outputs.\n---\n# Structured Formatter\n\nFormat system telemetry data.\n"
+  "version_id": "v1",
+  "skill_name": "user:structured-formatter",
+  "parent_version_id": null,
+  "content": "---\nname: structured-formatter\ndescription: Formats incoming server, hardware, and system metrics for structured reporting. Use when converting raw telemetry strings or system metrics into standardized outputs.\n---\n# Structured Formatter\n\n## When to Use\n- When parsing raw telemetry, server metrics, or system metrics\n- Formatting status artifacts for project reporting\n\n## Steps\n1. Validate incoming raw payload schema.\n2. Apply format transformations.\n3. Output structured artifact.\n",
+  "content_hash": "f0380fe419df9d93b0a9bf1f4f82ab903c603ae8",
+  "created_at": "2026-08-25T00:00:00Z",
+  "created_from_task_run_id": null,
+  "change_reason": "Initial baseline",
+  "diff": null,
+  "status": "active"
 }

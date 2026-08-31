@@ -1,16 +1,17 @@
 {
   "skill_name": "user:grill-with-docs",
   "display_name": "Grill With Docs",
+  "description": "Critical architectural interrogation against domain docs.",
   "active_version_id": "v1",
-  "versions": ["v1"],
+  "versions": [
+    "v1"
+  ],
   "triggers": [
-    "grilling session that challenges a plan against domain model",
-    "sharpens terminology and updates CONTEXT.md and ADRs",
-    "stress-test proposed technical plan before implementation"
+    "grill design with documentation",
+    "interrogate architectural plan",
+    "challenge implementation proposal"
   ],
   "negative_triggers": [
-    "simple single-file bug fix",
-    "trivial documentation typo edits"
-  ],
-  "project_scope_id": null
+    "simple syntax check"
+  ]
 }

@@ -1,11 +1,12 @@
 {
-  "metadata": {
-    "version_id": "v1",
-    "parent_version_id": null,
-    "created_at": "2026-08-25T00:00:00Z",
-    "content_hash": "3eedca6982eeaab76a96303bfcc247e61626b666",
-    "author": "system",
-    "change_reason": "Initial baseline manifest"
-  },
-  "content": "---\nname: implement\ndescription: Build work described by a spec or tickets, driving TDD at pre-agreed seams and closing out with code review before committing. Use when implementing ready features or tickets.\n---\n# Implement\n\nExecute tickets with TDD discipline.\n"
+  "version_id": "v1",
+  "skill_name": "user:implement",
+  "parent_version_id": null,
+  "content": "---\nname: implement\ndescription: Build work described by a spec or tickets, driving TDD at pre-agreed seams and closing out with code review before committing. Use when implementing ready features or tickets.\n---\n# Implement\n\nUse this skill to implement specified tickets and features following TDD discipline.\n\n## When to Use\n- Implementing features with ready specifications or issue tickets\n- Executing red-green-refactor TDD cycles\n\n## When NOT to Use\n- Requirements gathering or exploratory research without a spec\n",
+  "content_hash": "3eedca6982eeaab76a96303bfcc247e61626b666",
+  "created_at": "2026-08-25T00:00:00Z",
+  "created_from_task_run_id": null,
+  "change_reason": "Initial baseline",
+  "diff": null,
+  "status": "active"
 }

@@ -1,16 +1,18 @@
 {
   "skill_name": "user:domain-modeling",
   "display_name": "Domain Modeling",
+  "description": "Domain terminology and ADR documentation.",
   "active_version_id": "v1",
-  "versions": ["v1"],
+  "versions": [
+    "v1"
+  ],
   "triggers": [
-    "actively build and sharpen a project domain model",
-    "terminology CONTEXT.md glossary and ADRs",
-    "clarifying domain terms or documenting architecture"
+    "domain model and terminology",
+    "document architecture decision record adr",
+    "update context glossary"
   ],
   "negative_triggers": [
-    "debugging low-level runtime errors",
-    "profiling database performance"
-  ],
-  "project_scope_id": null
+    "unrelated unit test",
+    "css styling"
+  ]
 }

@@ -1,11 +1,12 @@
 {
-  "metadata": {
-    "version_id": "v1",
-    "parent_version_id": null,
-    "created_at": "2026-08-25T00:00:00Z",
-    "content_hash": "e7865be1c0cd45d429213797c9df37ebff8630f5",
-    "author": "system",
-    "change_reason": "Initial baseline manifest"
-  },
-  "content": "---\nname: domain-modeling\ndescription: Actively build and sharpen a project's domain model, terminology, CONTEXT.md glossary, and Architecture Decision Records (ADRs). Use when clarifying domain terms or documenting architecture.\n---\n# Domain Modeling\n\nMaintain project domain models.\n"
+  "version_id": "v1",
+  "skill_name": "user:domain-modeling",
+  "parent_version_id": null,
+  "content": "---\nname: domain-modeling\ndescription: Actively build and sharpen a project's domain model, terminology, CONTEXT.md glossary, and Architecture Decision Records (ADRs). Use when clarifying domain terms or documenting architecture.\n---\n# Domain Modeling\n\nUse this skill to model domain concepts, maintain ubiquitous language, and document ADRs.\n\n## When to Use\n- Clarifying ubiquitous language or domain entities\n- Documenting Architecture Decision Records (ADRs)\n- Maintaining CONTEXT.md glossary\n\n## When NOT to Use\n- Direct feature code authoring without domain changes\n",
+  "content_hash": "e7865be1c0cd45d429213797c9df37ebff8630f5",
+  "created_at": "2026-08-25T00:00:00Z",
+  "created_from_task_run_id": null,
+  "change_reason": "Initial baseline",
+  "diff": null,
+  "status": "active"
 }

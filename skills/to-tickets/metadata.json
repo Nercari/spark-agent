@@ -1,16 +1,17 @@
 {
   "skill_name": "user:to-tickets",
   "display_name": "To Tickets",
+  "description": "Decompose specs into vertical-slice task tickets.",
   "active_version_id": "v1",
-  "versions": ["v1"],
+  "versions": [
+    "v1"
+  ],
   "triggers": [
-    "break down a plan spec or conversation into vertical slice tracer bullet tickets",
-    "decomposing specs into actionable task tickets",
-    "tracer bullet tickets with explicit blocking edges"
+    "decompose spec into tickets",
+    "break down plan into tracer bullet tasks",
+    "create implementation task tickets"
   ],
   "negative_triggers": [
-    "executing code tests",
-    "drafting architecture decision records"
-  ],
-  "project_scope_id": null
+    "high level roadmap planning"
+  ]
 }

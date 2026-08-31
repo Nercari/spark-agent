@@ -1,11 +1,12 @@
 {
-  "metadata": {
-    "version_id": "v1",
-    "parent_version_id": null,
-    "created_at": "2026-08-25T00:00:00Z",
-    "content_hash": "e0fdbef2f2cf4712ed0c4d4a46d963f39a9b58b9",
-    "author": "system",
-    "change_reason": "Initial baseline manifest"
-  },
-  "content": "---\nname: triage\ndescription: Move issues through a state machine of triage roles (needs-triage, needs-info, ready-for-agent, ready-for-human, wontfix). Use when triaging issues and backlogs.\n---\n# Triage\n\nState machine for issue and backlog triage.\n"
+  "version_id": "v1",
+  "skill_name": "user:triage",
+  "parent_version_id": null,
+  "content": "---\nname: triage\ndescription: Move issues through a state machine of triage roles (needs-triage, needs-info, ready-for-agent, ready-for-human, wontfix). Use when triaging issues and backlogs.\n---\n# Triage\n\nUse this skill to triage incoming issues through standard state-machine labels.\n\n## When to Use\n- Triaging issue backlogs and incoming bug reports\n- Assigning triage status labels\n\n## When NOT to Use\n- Implementing fixes directly\n",
+  "content_hash": "e0fdbef2f2cf4712ed0c4d4a46d963f39a9b58b9",
+  "created_at": "2026-08-25T00:00:00Z",
+  "created_from_task_run_id": null,
+  "change_reason": "Initial baseline",
+  "diff": null,
+  "status": "active"
 }

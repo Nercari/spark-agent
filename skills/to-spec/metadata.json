@@ -1,16 +1,17 @@
 {
   "skill_name": "user:to-spec",
   "display_name": "To Spec",
+  "description": "Synthesize context into structured feature specifications.",
   "active_version_id": "v1",
-  "versions": ["v1"],
+  "versions": [
+    "v1"
+  ],
   "triggers": [
-    "synthesize conversation context and codebase understanding into structured feature specification",
-    "drafting a spec or PRD",
-    "publish specification to issue tracker"
+    "synthesize feature specification",
+    "draft technical spec from conversation",
+    "create prd for feature"
   ],
   "negative_triggers": [
-    "writing unit tests",
-    "fixing syntax errors in code"
-  ],
-  "project_scope_id": null
+    "direct bug fixing"
+  ]
 }

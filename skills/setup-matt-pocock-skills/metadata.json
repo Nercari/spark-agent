@@ -1,16 +1,18 @@
 {
   "skill_name": "user:setup-matt-pocock-skills",
   "display_name": "Setup Matt Pocock Skills",
+  "description": "Initialize repository engineering skill infrastructure.",
   "active_version_id": "v1",
-  "versions": ["v1"],
+  "versions": [
+    "v1"
+  ],
   "triggers": [
-    "configure repository infrastructure for engineering skills",
-    "issue tracker triage labels and domain doc layout",
-    "run once per repo setup"
+    "setup engineering skill infrastructure",
+    "initialize repository context and adr layout",
+    "configure issue tracker labels"
   ],
   "negative_triggers": [
-    "routine ticket implementation",
-    "general code reviews"
-  ],
-  "project_scope_id": null
+    "routine bugfix",
+    "modify existing feature"
+  ]
 }

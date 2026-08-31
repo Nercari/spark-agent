@@ -1,16 +1,18 @@
 {
   "skill_name": "user:codebase-design",
   "display_name": "Codebase Design",
+  "description": "Deep module and interface design.",
   "active_version_id": "v1",
-  "versions": ["v1"],
+  "versions": [
+    "v1"
+  ],
   "triggers": [
-    "shared discipline and vocabulary for designing deep modules",
-    "design deep modules with small interfaces",
-    "designing interfaces modules or boundaries"
+    "design interfaces modules or boundaries",
+    "refactor shallow module into deep module",
+    "architectural seam design"
   ],
   "negative_triggers": [
-    "writing unit tests without architecture redesign",
-    "git merge conflict resolution"
-  ],
-  "project_scope_id": null
+    "quick bugfix",
+    "typo fix"
+  ]
 }

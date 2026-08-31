@@ -1,16 +1,17 @@
 {
   "skill_name": "user:structured-formatter",
   "display_name": "Structured Formatter",
+  "description": "Formats telemetry and server metrics.",
   "active_version_id": "v1",
-  "versions": ["v1"],
+  "versions": [
+    "v1"
+  ],
   "triggers": [
-    "format incoming server hardware and system metrics for structured reporting",
-    "convert raw telemetry strings or system metrics into standardized outputs",
-    "parse metrics and format json"
+    "format telemetry metrics",
+    "parse server metrics data stream",
+    "format structured status output"
   ],
   "negative_triggers": [
-    "git conflict resolution",
-    "drafting legal contracts"
-  ],
-  "project_scope_id": null
+    "unrelated text drafting"
+  ]
 }
