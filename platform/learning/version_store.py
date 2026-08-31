@@ -1,220 +1,117 @@
-"""Skill Version Store: Versioned Append-Only Storage & Atomic Mutation Management (EXP-01, EXP-03)."""
-
-import json
+from __future__ import annotations
 import os
-import shutil
-import threading
-from typing import Dict, List, Optional, Tuple
-from platform.learning.contracts import (
-    SkillVersion,
-    generate_sha256,
-)
+import json
+import time
+from dataclasses import dataclass
+from typing import List, Optional, Dict, Any
 
+@dataclass
+class SkillVersionRecord:
+    skill_name: str
+    version: str
+    content: str
+    commit_message: str
+    timestamp: float
 
-class SkillVersionStore:
-    """Manages versioned, append-only procedural skill packages with atomic CAS pointer switches."""
+class VersionStore:
+    """Append-only version store providing atomic CAS updates for skills."""
 
-    def __init__(self, base_skills_dir: Optional[str] = None):
-        self.base_skills_dir = base_skills_dir or os.path.expanduser("~/.spark/skills")
-        self._lock = threading.Lock()
-        os.makedirs(self.base_skills_dir, exist_ok=True)
+    def __init__(self, base_dir: str = "skills"):
+        self.base_dir = base_dir
 
-    def _get_skill_dir(self, skill_name: str) -> str:
-        clean_name = skill_name.split(":", 1)[-1] if ":" in skill_name else skill_name
-        return os.path.join(self.base_skills_dir, clean_name)
-
-    def _get_metadata_path(self, skill_name: str) -> str:
-        return os.path.join(self._get_skill_dir(skill_name), "metadata.json")
-
-    def _get_versions_dir(self, skill_name: str) -> str:
-        return os.path.join(self._get_skill_dir(skill_name), "versions")
-
-    def list_skills(self) -> List[str]:
-        """Lists all skill names present in the skills directory."""
-        with self._lock:
-            skills = []
-            if not os.path.exists(self.base_skills_dir):
-                return skills
-            for entry in os.listdir(self.base_skills_dir):
-                sdir = os.path.join(self.base_skills_dir, entry)
-                if os.path.isdir(sdir):
-                    skills.append(f"user:{entry}")
-            return sorted(skills)
-
-    def get_active_version(self, skill_name: str) -> Optional[SkillVersion]:
-        """Retrieves active SkillVersion instance for a skill."""
-        active_id = self.get_active_version_id(skill_name)
-        if not active_id:
+    def get_current_version(self, skill_name: str) -> Optional[str]:
+        meta_path = os.path.join(self.base_dir, skill_name, "metadata.json")
+        if not os.path.isfile(meta_path):
             return None
-        return self.get_version(skill_name, active_id)
+        try:
+            with open(meta_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return data.get("current_version", "v1")
+        except Exception:
+            return "v1"
 
-    def initialize_skill_version(
+    def list_versions(self, skill_name: str) -> List[SkillVersionRecord]:
+        versions_dir = os.path.join(self.base_dir, skill_name, "versions")
+        if not os.path.isdir(versions_dir):
+            return []
+
+        records = []
+        for fname in sorted(os.listdir(versions_dir)):
+            if not fname.endswith(".json"):
+                continue
+            path = os.path.join(versions_dir, fname)
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                records.append(SkillVersionRecord(
+                    skill_name=skill_name,
+                    version=data["version"],
+                    content=data["content"],
+                    commit_message=data.get("commit_message", ""),
+                    timestamp=data.get("timestamp", 0.0),
+                ))
+            except Exception:
+                continue
+        return records
+
+    def commit_new_version(
         self,
         skill_name: str,
-        initial_content: str,
-        change_reason: str = "Initial baseline",
-    ) -> SkillVersion:
-        with self._lock:
-            sdir = self._get_skill_dir(skill_name)
-            vdir = self._get_versions_dir(skill_name)
-            os.makedirs(vdir, exist_ok=True)
+        expected_base_version: str,
+        content: str,
+        commit_message: str,
+    ) -> bool:
+        current = self.get_current_version(skill_name)
+        if current and current != expected_base_version:
+            return False
 
-            mpath = self._get_metadata_path(skill_name)
-            if os.path.exists(mpath):
-                with open(mpath, "r", encoding="utf-8") as f:
-                    meta = json.load(f)
-                active_id = meta.get("active_version_id", "v1")
-                return self.get_version(skill_name, active_id)
+        skill_dir = os.path.join(self.base_dir, skill_name)
+        versions_dir = os.path.join(skill_dir, "versions")
+        os.makedirs(versions_dir, exist_ok=True)
 
-            c_hash = generate_sha256(initial_content)
-            v1_ver = SkillVersion(
-                version_id="v1",
-                skill_name=skill_name,
-                parent_version_id=None,
-                content=initial_content,
-                content_hash=c_hash,
-                created_at="2026-08-25T00:00:00Z",
-                change_reason=change_reason,
-                status="active",
-            )
+        # Determine next version
+        curr_num = int(current[1:]) if current and current.startswith("v") else 1
+        next_version = f"v{curr_num + 1}"
 
-            # 1. Save v1 version file
-            v1_path = os.path.join(vdir, "v1.json")
-            with open(v1_path, "w", encoding="utf-8") as f:
-                json.dump(v1_ver.to_dict(), f, indent=2)
+        # Write version file
+        ver_record = {
+            "version": next_version,
+            "content": content,
+            "commit_message": commit_message,
+            "timestamp": time.time(),
+        }
+        ver_path = os.path.join(versions_dir, f"{next_version}.json")
+        with open(ver_path, "w", encoding="utf-8") as f:
+            json.dump(ver_record, f, indent=2)
 
-            # 2. Write active SKILL.md
-            skill_md_path = os.path.join(sdir, "SKILL.md")
-            with open(skill_md_path, "w", encoding="utf-8") as f:
-                f.write(initial_content)
+        # Write active SKILL.md
+        skill_path = os.path.join(skill_dir, "SKILL.md")
+        with open(skill_path, "w", encoding="utf-8") as f:
+            f.write(content)
 
-            # 3. Write metadata.json
-            meta_dict = {
-                "skill_name": skill_name,
-                "active_version_id": "v1",
-                "versions": ["v1"],
-            }
-            with open(mpath, "w", encoding="utf-8") as f:
-                json.dump(meta_dict, f, indent=2)
+        # Update metadata.json
+        meta_path = os.path.join(skill_dir, "metadata.json")
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump({"skill_name": skill_name, "current_version": next_version, "updated_at": time.time()}, f, indent=2)
 
-            return v1_ver
+        return True
 
-    def get_current_skill_content(self, skill_name: str) -> Optional[str]:
-        sdir = self._get_skill_dir(skill_name)
-        skill_md_path = os.path.join(sdir, "SKILL.md")
-        if not os.path.exists(skill_md_path):
-            return None
-        with open(skill_md_path, "r", encoding="utf-8") as f:
-            return f.read()
+    def rollback_to_version(self, skill_name: str, target_version: str) -> bool:
+        versions_dir = os.path.join(self.base_dir, skill_name, "versions")
+        ver_path = os.path.join(versions_dir, f"{target_version}.json")
+        if not os.path.isfile(ver_path):
+            return False
 
-    def get_active_version_id(self, skill_name: str) -> Optional[str]:
-        mpath = self._get_metadata_path(skill_name)
-        if not os.path.exists(mpath):
-            return None
-        with open(mpath, "r", encoding="utf-8") as f:
+        with open(ver_path, "r", encoding="utf-8") as f:
             data = json.load(f)
-            return data.get("active_version_id")
 
-    def get_version(self, skill_name: str, version_id: str) -> Optional[SkillVersion]:
-        vpath = os.path.join(self._get_versions_dir(skill_name), f"{version_id}.json")
-        if not os.path.exists(vpath):
-            return None
-        with open(vpath, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            return SkillVersion.from_dict(data)
+        skill_dir = os.path.join(self.base_dir, skill_name)
+        skill_path = os.path.join(skill_dir, "SKILL.md")
+        with open(skill_path, "w", encoding="utf-8") as f:
+            f.write(data["content"])
 
-    def append_version(
-        self,
-        skill_name: str,
-        new_content: str,
-        change_reason: str,
-        expected_base_version_id: str,
-        task_run_id: Optional[str] = None,
-        diff: Optional[str] = None,
-    ) -> Tuple[bool, str, Optional[SkillVersion]]:
-        with self._lock:
-            mpath = self._get_metadata_path(skill_name)
-            if not os.path.exists(mpath):
-                return False, f"Skill {skill_name} not initialized.", None
+        meta_path = os.path.join(skill_dir, "metadata.json")
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump({"skill_name": skill_name, "current_version": target_version, "updated_at": time.time(), "rollback": True}, f, indent=2)
 
-            with open(mpath, "r", encoding="utf-8") as f:
-                meta = json.load(f)
-
-            active_ver = meta.get("active_version_id")
-            if active_ver != expected_base_version_id:
-                return False, f"Stale write rejected: expected base {expected_base_version_id}, found {active_ver}.", None
-
-            versions = meta.get("versions", [])
-            next_idx = len(versions) + 1
-            new_version_id = f"v{next_idx}"
-
-            vdir = self._get_versions_dir(skill_name)
-            vpath = os.path.join(vdir, f"{new_version_id}.json")
-            if os.path.exists(vpath):
-                return False, f"Version overwrite rejected: {new_version_id} already exists.", None
-
-            c_hash = generate_sha256(new_content)
-            new_ver = SkillVersion(
-                version_id=new_version_id,
-                skill_name=skill_name,
-                parent_version_id=active_ver,
-                content=new_content,
-                content_hash=c_hash,
-                created_at="2026-08-25T12:00:00Z",
-                created_from_task_run_id=task_run_id,
-                change_reason=change_reason,
-                diff=diff,
-                status="active",
-            )
-
-            # 1. Write immutable version file
-            with open(vpath, "w", encoding="utf-8") as f:
-                json.dump(new_ver.to_dict(), f, indent=2)
-
-            # 2. Write active SKILL.md
-            sdir = self._get_skill_dir(skill_name)
-            skill_md_path = os.path.join(sdir, "SKILL.md")
-            with open(skill_md_path, "w", encoding="utf-8") as f:
-                f.write(new_content)
-
-            # 3. Update metadata.json atomic switch
-            versions.append(new_version_id)
-            meta["active_version_id"] = new_version_id
-            meta["versions"] = versions
-            with open(mpath, "w", encoding="utf-8") as f:
-                json.dump(meta, f, indent=2)
-
-            return True, f"Successfully promoted {new_version_id}", new_ver
-
-    def rollback_version(
-        self,
-        skill_name: str,
-        target_version_id: str,
-    ) -> Tuple[bool, str]:
-        with self._lock:
-            mpath = self._get_metadata_path(skill_name)
-            if not os.path.exists(mpath):
-                return False, f"Skill {skill_name} not initialized."
-
-            with open(mpath, "r", encoding="utf-8") as f:
-                meta = json.load(f)
-
-            vdir = self._get_versions_dir(skill_name)
-            vpath = os.path.join(vdir, f"{target_version_id}.json")
-            if not os.path.exists(vpath):
-                return False, f"Target version {target_version_id} does not exist."
-
-            with open(vpath, "r", encoding="utf-8") as f:
-                vdata = json.load(f)
-                target_content = vdata["content"]
-
-            sdir = self._get_skill_dir(skill_name)
-            skill_md_path = os.path.join(sdir, "SKILL.md")
-            with open(skill_md_path, "w", encoding="utf-8") as f:
-                f.write(target_content)
-
-            meta["active_version_id"] = target_version_id
-            with open(mpath, "w", encoding="utf-8") as f:
-                json.dump(meta, f, indent=2)
-
-            return True, f"Successfully rolled back {skill_name} to {target_version_id}"
+        return True

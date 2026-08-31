@@ -1,95 +1,46 @@
-"""Gemini Spark Autonomous Learning Platform (Hermes-Compatible Baseline)."""
-
 from platform.learning.contracts import (
-    TaskRun,
     EvidenceEvent,
-    SkillVersion,
-    LearningMutation,
+    TaskExecutionRecord,
+    ReflectionAnalysis,
+    ReviewDecision,
+    ProposedMutation,
+    MutationType,
     VerificationResult,
-    EventType,
-    TrustClass,
-    PayloadOrigin,
-    VerificationStatus,
-    MutationDecision,
-    ReflectionContext,
-    SubagentInvocationRequest,
-    ReflectionProposal,
-    is_untrusted_origin,
-    can_evidence_authorize_learning,
 )
-from platform.learning.evidence_recorder import EvidenceRecorder
-from platform.learning.verifier import OutcomeVerifier
-from platform.learning.version_store import SkillVersionStore
-from platform.learning.reviewer import BackgroundLearningReviewer
-from platform.learning.reflection import (
-    HermesReflectionEngine,
-    DeterministicRecoveryAnalyzer,
-    HermesSemanticReflectionSubagent,
-    ReflectionAgentBackend,
-    MockReflectionAgentBackend,
-    DirectSubagentReflectionBackend,
-    ReflectionRuntimeBridge,
-    SubagentReflectionParser,
-)
-from platform.learning.commit_engine import LearningCommitEngine
 from platform.learning.backend import (
     SkillBackend,
     LocalFilesystemSkillBackend,
     SparkRuntimeSkillBridge,
-    SparkSkillUpdateManifest,
 )
-from platform.learning.skill_router import (
-    SkillManifest,
-    SkillMatchResult,
-    ProceduralSkillParser,
-    ProceduralSkillRouter,
-)
-from platform.learning.authority_arbiter import (
-    AuthorityTier,
-    AuthorityCandidate,
-    ArbitrationResult,
-    AuthorityArbiter,
-)
+from platform.learning.version_store import VersionStore
+from platform.learning.reviewer import ReflectionReviewer
+from platform.learning.reflection import HermesSemanticReflectionSubagent
+from platform.learning.verifier import MutationVerifier
+from platform.learning.commit_engine import LearningCommitEngine
+from platform.learning.skill_router import ProceduralSkillRouter, ProceduralSkillParser, SkillManifest
+from platform.learning.authority_arbiter import AuthorityArbiter, AuthorityTier, AuthorityDecision, AuthorityResolution
 
 __all__ = [
-    "TaskRun",
     "EvidenceEvent",
-    "SkillVersion",
-    "LearningMutation",
+    "TaskExecutionRecord",
+    "ReflectionAnalysis",
+    "ReviewDecision",
+    "ProposedMutation",
+    "MutationType",
     "VerificationResult",
-    "EventType",
-    "TrustClass",
-    "PayloadOrigin",
-    "VerificationStatus",
-    "MutationDecision",
-    "ReflectionContext",
-    "SubagentInvocationRequest",
-    "ReflectionProposal",
-    "is_untrusted_origin",
-    "can_evidence_authorize_learning",
-    "EvidenceRecorder",
-    "OutcomeVerifier",
-    "SkillVersionStore",
-    "BackgroundLearningReviewer",
-    "HermesReflectionEngine",
-    "DeterministicRecoveryAnalyzer",
-    "HermesSemanticReflectionSubagent",
-    "ReflectionAgentBackend",
-    "MockReflectionAgentBackend",
-    "DirectSubagentReflectionBackend",
-    "ReflectionRuntimeBridge",
-    "SubagentReflectionParser",
-    "LearningCommitEngine",
     "SkillBackend",
     "LocalFilesystemSkillBackend",
     "SparkRuntimeSkillBridge",
-    "SparkSkillUpdateManifest",
-    "SkillManifest",
-    "SkillMatchResult",
-    "ProceduralSkillParser",
+    "VersionStore",
+    "ReflectionReviewer",
+    "HermesSemanticReflectionSubagent",
+    "MutationVerifier",
+    "LearningCommitEngine",
     "ProceduralSkillRouter",
-    "AuthorityTier",
-    "AuthorityCandidate",
-    "ArbitrationResult",
+    "ProceduralSkillParser",
+    "SkillManifest",
     "AuthorityArbiter",
+    "AuthorityTier",
+    "AuthorityDecision",
+    "AuthorityResolution",
 ]
