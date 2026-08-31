@@ -1,58 +1,95 @@
-"""Autonomous Learning Platform Module Initialization."""
+"""Gemini Spark Autonomous Learning Platform (Hermes-Compatible Baseline)."""
 
 from platform.learning.contracts import (
     TaskRun,
     EvidenceEvent,
-    EventType,
-    TrustClass,
-    VerificationStatus,
-    ReflectionDecision,
-    MutationDecision,
-    PayloadOrigin,
     SkillVersion,
     LearningMutation,
-    ReflectionProposal,
+    VerificationResult,
+    EventType,
+    TrustClass,
+    PayloadOrigin,
+    VerificationStatus,
+    MutationDecision,
     ReflectionContext,
     SubagentInvocationRequest,
-    SubagentAuditRecord,
-    generate_sha256,
+    ReflectionProposal,
+    is_untrusted_origin,
+    can_evidence_authorize_learning,
 )
 from platform.learning.evidence_recorder import EvidenceRecorder
 from platform.learning.verifier import OutcomeVerifier
 from platform.learning.version_store import SkillVersionStore
-from platform.learning.reflection import ReflectionEngine
 from platform.learning.reviewer import BackgroundLearningReviewer
+from platform.learning.reflection import (
+    HermesReflectionEngine,
+    DeterministicRecoveryAnalyzer,
+    HermesSemanticReflectionSubagent,
+    ReflectionAgentBackend,
+    MockReflectionAgentBackend,
+    DirectSubagentReflectionBackend,
+    ReflectionRuntimeBridge,
+    SubagentReflectionParser,
+)
 from platform.learning.commit_engine import LearningCommitEngine
-from platform.learning.skill_router import ProceduralSkillRouter, ProceduralSkillParser, SkillManifest
-from platform.learning.authority_arbiter import AuthorityArbiter, AuthorityTier, AuthorityDecision, AuthorityResolution
+from platform.learning.backend import (
+    SkillBackend,
+    LocalFilesystemSkillBackend,
+    SparkRuntimeSkillBridge,
+    SparkSkillUpdateManifest,
+)
+from platform.learning.skill_router import (
+    SkillManifest,
+    SkillMatchResult,
+    ProceduralSkillParser,
+    ProceduralSkillRouter,
+)
+from platform.learning.authority_arbiter import (
+    AuthorityTier,
+    AuthorityCandidate,
+    ArbitrationResult,
+    AuthorityArbiter,
+)
 
 __all__ = [
     "TaskRun",
     "EvidenceEvent",
-    "EventType",
-    "TrustClass",
-    "VerificationStatus",
-    "ReflectionDecision",
-    "MutationDecision",
-    "PayloadOrigin",
     "SkillVersion",
     "LearningMutation",
-    "ReflectionProposal",
+    "VerificationResult",
+    "EventType",
+    "TrustClass",
+    "PayloadOrigin",
+    "VerificationStatus",
+    "MutationDecision",
     "ReflectionContext",
     "SubagentInvocationRequest",
-    "SubagentAuditRecord",
-    "generate_sha256",
+    "ReflectionProposal",
+    "is_untrusted_origin",
+    "can_evidence_authorize_learning",
     "EvidenceRecorder",
     "OutcomeVerifier",
     "SkillVersionStore",
-    "ReflectionEngine",
     "BackgroundLearningReviewer",
+    "HermesReflectionEngine",
+    "DeterministicRecoveryAnalyzer",
+    "HermesSemanticReflectionSubagent",
+    "ReflectionAgentBackend",
+    "MockReflectionAgentBackend",
+    "DirectSubagentReflectionBackend",
+    "ReflectionRuntimeBridge",
+    "SubagentReflectionParser",
     "LearningCommitEngine",
-    "ProceduralSkillRouter",
-    "ProceduralSkillParser",
+    "SkillBackend",
+    "LocalFilesystemSkillBackend",
+    "SparkRuntimeSkillBridge",
+    "SparkSkillUpdateManifest",
     "SkillManifest",
-    "AuthorityArbiter",
+    "SkillMatchResult",
+    "ProceduralSkillParser",
+    "ProceduralSkillRouter",
     "AuthorityTier",
-    "AuthorityDecision",
-    "AuthorityResolution",
+    "AuthorityCandidate",
+    "ArbitrationResult",
+    "AuthorityArbiter",
 ]
