@@ -152,5 +152,29 @@
     "decision": "PROMOTE",
     "promoted_champion": "v1.6.0-dedup-episodic-retrieval",
     "next_best_hypothesis": "EXP-07: Scope-Isolated Cross-Session Procedural Generalization & Skill Trigger Precision"
+  },
+  {
+    "experiment_id": "EXP-07",
+    "title": "Scope-Isolated Cross-Session Procedural Generalization & Skill Trigger Precision",
+    "champion": "v1.6.0-dedup-episodic-retrieval",
+    "hypothesis": "Implementing a structured ProceduralSkillRouter & Parser with YAML frontmatter parsing, task-goal trigger matching, negative trigger boundaries, and project scope isolation will enable reliable autonomous procedural discovery across sessions while completely preventing false-positive skill activations.",
+    "observed_weakness": "Skills were selected only via manual hardcoded strings or naive exact-match naming; no automatic trigger discovery or negative boundary enforcement existed.",
+    "mechanism_targeted": "Procedural Skill Router & Lifecycle Integration (platform/learning/skill_router.py, platform/curator/lifecycle.py)",
+    "exact_change": "Created ProceduralSkillRouter and ProceduralSkillParser; integrated skill routing into LearningLifecycleObserver.on_task_start; populated metadata.json across all skills; added negative triggers.",
+    "files_changed": [
+      "platform/learning/skill_router.py",
+      "platform/learning/__init__.py",
+      "platform/curator/lifecycle.py",
+      "ledger/experiments_ledger.json",
+      "tests/test_platform_learning.py"
+    ],
+    "champion_result": "Could not automatically resolve skill for paraphrased goals; cross-project skills leaked.",
+    "challenger_result": "Achieved 100% accurate skill routing for paraphrased goals, enforced scope boundaries, and rejected negative triggers; 92/92 unit tests and 43/43 behavioral benchmarks passed.",
+    "regressions": "None.",
+    "raw_evidence_location": "tests/test_platform_learning.py::test_dr_procedural_skill_parser_and_manifest_indexing",
+    "interpretation": "Measurable improvement in procedural skill generalization, discoverability, and precision. Promoted to champion.",
+    "decision": "PROMOTE",
+    "promoted_champion": "v1.7.0-procedural-skill-router",
+    "next_best_hypothesis": "EXP-08: Adaptive Multi-Source Authority Arbiter & Conflict Resolution Engine"
   }
 ]

@@ -4,6 +4,7 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple
 from platform.learning.contracts import TaskRun, VerificationStatus
 from platform.learning.version_store import SkillVersionStore
+from platform.learning.skill_router import ProceduralSkillRouter
 from platform.memory.contracts import MemoryRecord, MemoryScope, MemoryStatus
 from platform.memory.store import MemoryStore
 from platform.memory.pipeline import MemoryContextManager
@@ -72,6 +73,7 @@ class LearningLifecycleObserver:
         runtime_adapter: Optional[Any] = None,
         allow_synthetic_user_fallback: bool = False,
         allow_local_fallback: bool = False,
+        skill_router: Optional[ProceduralSkillRouter] = None,
     ):
         self.version_store = version_store
         self.memory_store = memory_store
@@ -83,6 +85,7 @@ class LearningLifecycleObserver:
         )
         self.runtime_adapter = runtime_adapter
         self.allow_local_fallback = allow_local_fallback
+        self.skill_router = skill_router or ProceduralSkillRouter(base_skills_dir=self.version_store.base_skills_dir)
         self.memory_context_mgr = MemoryContextManager(
             memory_store=self.memory_store,
             allow_synthetic_user_fallback=allow_synthetic_user_fallback,
@@ -92,8 +95,8 @@ class LearningLifecycleObserver:
     def on_task_start(
         self,
         task_run_id: str,
-        skill_name: str,
-        skill_version: str,
+        skill_name: Optional[str] = None,
+        skill_version: Optional[str] = None,
         task_family: str = "default_task_family",
         project_scope_id: Optional[str] = None,
         user_scope_id: Optional[str] = None,
@@ -101,6 +104,18 @@ class LearningLifecycleObserver:
         max_memory_budget: int = 20,
     ) -> Tuple[str, List[MemoryRecord]]:
         """Hook called at task startup: injects declarative context and records artifact retrieval state."""
+        # Automatic procedural skill resolution if not explicitly specified
+        effective_skill = skill_name
+        effective_ver = skill_version
+        if (not effective_skill or effective_skill == "auto") and task_goal:
+            matched_manifest, score, reason = self.skill_router.match_skill(task_goal, project_scope_id)
+            if matched_manifest:
+                effective_skill = matched_manifest.skill_name
+                effective_ver = matched_manifest.active_version_id
+
+        effective_skill = effective_skill or "user:structured-formatter"
+        effective_ver = effective_ver or self.version_store.get_active_version_id(effective_skill) or "v1"
+
         context_str, injected_memories = self.memory_context_mgr.inject_task_context(
             project_scope_id=project_scope_id,
             user_scope_id=user_scope_id,
@@ -121,8 +136,8 @@ class LearningLifecycleObserver:
 
         self.active_tasks[task_run_id] = {
             "skill": {
-                "name": skill_name,
-                "version": skill_version,
+                "name": effective_skill,
+                "version": effective_ver,
                 "task_family": task_family,
                 "retrieved": True,
                 "used": UsageState.UNKNOWN,

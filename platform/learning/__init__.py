@@ -1,75 +1,46 @@
-"""Gemini Spark Autonomous Learning Platform (Hermes-Compatible Baseline)."""
+"""Autonomous Learning Platform Module Initialization."""
 
 from platform.learning.contracts import (
     TaskRun,
-    EvidenceEvent,
-    SkillVersion,
-    LearningMutation,
-    VerificationResult,
-    EventType,
-    TrustClass,
-    PayloadOrigin,
+    EvidenceRecord,
+    TaskRunSummary,
     VerificationStatus,
     MutationDecision,
-    ReflectionContext,
-    SubagentInvocationRequest,
-    ReflectionProposal,
-    is_untrusted_origin,
-    can_evidence_authorize_learning,
+    PayloadOrigin,
+    SkillVersionMetadata,
+    LearningMutationProposal,
+    generate_sha256,
 )
 from platform.learning.evidence_recorder import EvidenceRecorder
 from platform.learning.verifier import OutcomeVerifier
 from platform.learning.version_store import SkillVersionStore
+from platform.learning.reflection import ReflectionEngine
 from platform.learning.reviewer import BackgroundLearningReviewer
-from platform.learning.reflection import (
-    HermesReflectionEngine,
-    DeterministicRecoveryAnalyzer,
-    HermesSemanticReflectionSubagent,
-    ReflectionAgentBackend,
-    MockReflectionAgentBackend,
-    DirectSubagentReflectionBackend,
-    ReflectionRuntimeBridge,
-    SubagentReflectionParser,
-)
 from platform.learning.commit_engine import LearningCommitEngine
-from platform.learning.backend import (
-    SkillBackend,
-    LocalFilesystemSkillBackend,
-    SparkRuntimeSkillBridge,
-    SparkSkillUpdateManifest,
-)
+from platform.learning.skill_router import ProceduralSkillRouter, ProceduralSkillParser, SkillManifest
+from platform.learning.authority_arbiter import AuthorityArbiter, AuthorityTier, AuthorityDecision, AuthorityResolution
 
 __all__ = [
     "TaskRun",
-    "EvidenceEvent",
-    "SkillVersion",
-    "LearningMutation",
-    "VerificationResult",
-    "EventType",
-    "TrustClass",
-    "PayloadOrigin",
+    "EvidenceRecord",
+    "TaskRunSummary",
     "VerificationStatus",
     "MutationDecision",
-    "ReflectionContext",
-    "SubagentInvocationRequest",
-    "ReflectionProposal",
-    "is_untrusted_origin",
-    "can_evidence_authorize_learning",
+    "PayloadOrigin",
+    "SkillVersionMetadata",
+    "LearningMutationProposal",
+    "generate_sha256",
     "EvidenceRecorder",
     "OutcomeVerifier",
     "SkillVersionStore",
+    "ReflectionEngine",
     "BackgroundLearningReviewer",
-    "HermesReflectionEngine",
-    "DeterministicRecoveryAnalyzer",
-    "HermesSemanticReflectionSubagent",
-    "ReflectionAgentBackend",
-    "MockReflectionAgentBackend",
-    "DirectSubagentReflectionBackend",
-    "ReflectionRuntimeBridge",
-    "SubagentReflectionParser",
     "LearningCommitEngine",
-    "SkillBackend",
-    "LocalFilesystemSkillBackend",
-    "SparkRuntimeSkillBridge",
-    "SparkSkillUpdateManifest",
+    "ProceduralSkillRouter",
+    "ProceduralSkillParser",
+    "SkillManifest",
+    "AuthorityArbiter",
+    "AuthorityTier",
+    "AuthorityDecision",
+    "AuthorityResolution",
 ]
