@@ -1,97 +1,112 @@
-"""Semantic & Heuristic Classifier distinguishing Declarative Memory from Procedural Skills."""
+"""Enhanced Semantic Memory Classifier: Condition-Bound Convention & Correction Extraction (EXP-01)."""
 
 import re
-from typing import Optional
+import uuid
+from typing import List, Optional, Tuple
 from platform.memory.contracts import (
-    MemoryKind,
+    MemoryRecord,
     MemoryScope,
-    MemoryClassificationResult,
+    MemoryKind,
+    MemoryStatus,
 )
+from platform.learning.contracts import TaskRun
 
 
 class MemoryClassifier:
-    """Classifies user instructions and task experiences into declarative facts/preferences vs procedural skills."""
+    """Extracts structured declarative memory rules, project conventions, and user preferences from task runs."""
 
-    @staticmethod
-    def classify(
+    # Explicit patterns matching project conventions, formatting rules, deployment environments, constraints, etc.
+    PATTERNS = [
+        # Format / schema rules: "status artifacts should use compact_json" or "uses jsonl for status"
+        (r"(?:for this project|in this project|for this pilot|this project now|project|pilot)?\s*(?:status artifacts|artifacts|exports|files|output)?\s*(?:should use|uses|must use|switch to|format is)\s+([a-zA-Z0-9_-]+)", "canonical_export_format", MemoryKind.CONVENTION),
+        # Default deployment environment / branch / target
+        (r"(?:default|target)?\s*(?:deployment|deploy|release)\s*(?:environment|target|env)?\s*(?:is|should be|must be|to)\s+([a-zA-Z0-9_-]+)", "default_deployment_environment", MemoryKind.CONVENTION),
+        # Testing framework preference: "use pytest for test runs"
+        (r"(?:use|prefer)\s+([a-zA-Z0-9_-]+)\s+for\s+(?:tests|testing|test runs)", "preferred_test_runner", MemoryKind.PREFERENCE),
+        # Notification recipient: "send notifications to ops@example.com"
+        (r"(?:send|route)\s+(?:alerts|notifications|reports)\s+to\s+([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)", "notification_recipient", MemoryKind.FACT),
+        # Style / constraint rules: "avoid verbose logging in production"
+        (r"(?:avoid|do not use|disable)\s+([a-zA-Z0-9_\s-]+?)\s+(?:in|for)\s+([a-zA-Z0-9_-]+)", "negative_constraint", MemoryKind.CONVENTION),
+        # User role / identity facts: "user is senior engineer"
+        (r"user\s+(?:is|role is)\s+([a-zA-Z0-9_\s-]+)", "user_role", MemoryKind.FACT),
+    ]
+
+    def extract_memories_from_task_run(
+        self,
+        task_run: TaskRun,
+        default_scope: MemoryScope = MemoryScope.PROJECT,
+        scope_id: Optional[str] = None,
+    ) -> List[MemoryRecord]:
+        records: List[MemoryRecord] = []
+        effective_scope_id = scope_id or task_run.project_scope_id or "default_project"
+
+        # 1. Process explicit user corrections (highest priority)
+        for corr in task_run.user_corrections:
+            rec = self._parse_statement(
+                text=corr,
+                scope=default_scope,
+                scope_id=effective_scope_id,
+                task_run_id=task_run.id,
+                confidence=1.0,
+                is_correction=True,
+            )
+            if rec:
+                records.append(rec)
+
+        # 2. Process user instructions
+        for instr in task_run.user_instructions:
+            rec = self._parse_statement(
+                text=instr,
+                scope=default_scope,
+                scope_id=effective_scope_id,
+                task_run_id=task_run.id,
+                confidence=0.9,
+                is_correction=False,
+            )
+            if rec and not any(r.key == rec.key for r in records):
+                records.append(rec)
+
+        return records
+
+    def _parse_statement(
+        self,
         text: str,
-        project_scope_id: Optional[str] = None,
-        user_scope_id: str = "default_user",
-    ) -> MemoryClassificationResult:
-        cleaned = text.strip()
-        lower = cleaned.lower()
+        scope: MemoryScope,
+        scope_id: str,
+        task_run_id: str,
+        confidence: float,
+        is_correction: bool,
+    ) -> Optional[MemoryRecord]:
+        text_clean = text.strip()
 
-        # 1. Detect Procedural Skills: "before X, always Y", "first do A, then B", multi-step workflow rules
-        procedural_patterns = [
-            r"before\s+.*,\s*(?:always|ensure|run|execute|perform)",
-            r"first\s+.*,\s*then\s+.*",
-            r"workflow\s+steps",
-            r"always\s+(?:run|execute|call|decompress|fetch|drain)\s+.*?\s+(?:before|after)",
-            r"step\s+\d+:\s*",
-        ]
-        for pat in procedural_patterns:
-            if re.search(pat, lower):
-                return MemoryClassificationResult(
-                    is_memory=False,
-                    is_procedural_skill=True,
-                    reason="Identified multi-step procedural workflow instruction; belongs in a procedural Skill.",
-                )
+        for pattern, default_key, kind in self.PATTERNS:
+            match = re.search(pattern, text_clean, re.IGNORECASE)
+            if match:
+                val = match.group(1).strip()
+                key = default_key
 
-        # 2. Detect User Preferences: "I prefer X", "My preferred format is X"
-        pref_match = re.search(r"(?:i prefer|my preference is|i like|always format my)\s+([^.]+)", lower)
-        if pref_match:
-            val = pref_match.group(1).strip()
-            key = "user_preference"
-            if "report" in val:
-                key = "report_style_preference"
-            return MemoryClassificationResult(
-                is_memory=True,
-                kind=MemoryKind.PREFERENCE,
-                scope=MemoryScope.USER,
-                scope_id=user_scope_id,
-                key=key,
-                value=cleaned,
-                reason="User expressed a personal preference; stored as user PREFERENCE memory.",
-            )
+                # Scope determination: user preferences vs project conventions
+                rec_scope = scope
+                rec_scope_id = scope_id
+                if "prefer" in text_clean.lower() or "my" in text_clean.lower() or kind == MemoryKind.PREFERENCE:
+                    rec_scope = MemoryScope.USER
+                    rec_scope_id = "user_default"
 
-        # 3. Detect Project Conventions / Terminology: "we call customers 'members'", "for this project X means Y"
-        convention_match = re.search(r"(?:we call|we refer to|terminology for)\s+([^.]+)", lower)
-        if convention_match and project_scope_id:
-            return MemoryClassificationResult(
-                is_memory=True,
-                kind=MemoryKind.CONVENTION,
-                scope=MemoryScope.PROJECT,
-                scope_id=project_scope_id,
-                key="naming_convention",
-                value=cleaned,
-                reason="Project naming convention detected; stored as project CONVENTION memory.",
-            )
-
-        # 4. Detect Project Environment / Fact / Convention: "status artifacts should use compact_json", "our production region is us-east-1", "use standard_json as export format"
-        fact_patterns = [
-            (r"(?:canonical\s+export\s+format|export\s+format|status\s+artifacts?|export\s+artifacts?)\s+(?:should\s+use|use|is|to)?\s*[`'\"]?([a-zA-Z0-9_-]+)[`'\"]?", "canonical_export_format", MemoryKind.FACT),
-            (r"(?:production|staging|deployment)\s+(?:region|zone|bucket)\s+(?:is|to)\s*[`'\"]?([a-zA-Z0-9_-]+)[`'\"]?", "deployment_environment", MemoryKind.ENVIRONMENT),
-            (r"(?:use|set)\s+[`'\"]?([a-zA-Z0-9_-]+)[`'\"]?\s+as\s+(?:the\s+)?(?:canonical\s+)?export\s+format", "canonical_export_format", MemoryKind.FACT),
-            (r"(?:change that —|no —|update:)?\s*this (?:project|pilot) (?:now )?uses\s+[`'\"]?([a-zA-Z0-9_-]+)[`'\"]?", "canonical_export_format", MemoryKind.CORRECTION),
-        ]
-
-        for pat, key, kind in fact_patterns:
-            m = re.search(pat, lower)
-            if m:
-                val = m.group(1).strip()
-                scope = MemoryScope.PROJECT if project_scope_id else MemoryScope.USER
-                s_id = project_scope_id if project_scope_id else user_scope_id
-                return MemoryClassificationResult(
-                    is_memory=True,
+                mem_id = f"mem_{uuid.uuid4().hex[:12]}"
+                return MemoryRecord(
+                    id=mem_id,
+                    scope=rec_scope,
+                    scope_id=rec_scope_id,
                     kind=kind,
-                    scope=scope,
-                    scope_id=s_id,
                     key=key,
                     value=val,
-                    reason=f"Extracted {kind.value} memory for key '{key}'.",
+                    status=MemoryStatus.ACTIVE,
+                    confidence=confidence,
+                    evidence_ids=[task_run_id],
+                    metadata={
+                        "raw_statement": text_clean,
+                        "is_explicit_correction": is_correction,
+                    },
                 )
 
-        return MemoryClassificationResult(
-            is_memory=False,
-            reason="Input did not contain a durable declarative fact, preference, or convention.",
-        )
+        return None
