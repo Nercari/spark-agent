@@ -1,4 +1,4 @@
-"""Lifecycle Observer and Trigger Policy wiring automatic telemetry and curation into Spark tasks."""
+"""Lifecycle Observer and Trigger Policy wiring automatic telemetry and curation into Spark tasks (EXP-05)."""
 
 import logging
 from typing import Any, Dict, List, Optional, Tuple

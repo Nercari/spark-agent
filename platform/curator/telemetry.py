@@ -4,7 +4,7 @@ import os
 import sqlite3
 import threading
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from platform.learning.contracts import VerificationStatus
 from platform.curator.contracts import (
     ArtifactType,
@@ -155,6 +155,7 @@ class LearningTelemetryLedger:
                         used = excluded.used,
                         task_family = excluded.task_family,
                         verification_status = excluded.verification_status,
+                        recovery_required = excluded.recovery_required,
                         observed_effect = excluded.observed_effect,
                         timestamp = excluded.timestamp
                 """, (
