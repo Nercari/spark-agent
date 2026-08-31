@@ -22,6 +22,8 @@ from platform.learning.version_store import SkillVersionStore
 from platform.learning.reviewer import BackgroundLearningReviewer
 from platform.learning.commit_engine import LearningCommitEngine
 from platform.learning.reflection import ReflectionEngine
+from platform.learning.skill_router import ProceduralSkillRouter, ProceduralSkillParser, SkillManifest
+from platform.learning.authority_arbiter import AuthorityArbiter, AuthorityTier, AuthorityDecision, AuthorityResolution
 from platform.memory.contracts import MemoryScope, MemoryKind, MemoryStatus, MemoryRecord
 from platform.memory.backend import LocalFilesystemMemoryBackend
 from platform.memory.store import MemoryStore
@@ -45,7 +47,7 @@ from platform.curator.lifecycle import LearningLifecycleObserver
 
 
 class TestPlatformLearning(unittest.TestCase):
-    """Platform test suite validating autonomous learning invariants, CAS memory store, version store, and curator lifecycle."""
+    """Platform test suite validating autonomous learning invariants, CAS memory store, version store, skill router, authority arbiter, and curator lifecycle."""
 
     def setUp(self):
         self.test_dir = tempfile.mkdtemp(prefix="spark_test_")
@@ -104,11 +106,13 @@ class TestPlatformLearning(unittest.TestCase):
             telemetry_ledger=telemetry,
             audit_ledger_path=self.curator_audit_log,
         )
+        skill_router = ProceduralSkillRouter(base_skills_dir=self.skills_dir)
         observer = LearningLifecycleObserver(
             version_store=vstore,
             memory_store=mstore,
             telemetry_ledger=telemetry,
             curator=curator,
+            skill_router=skill_router,
             allow_synthetic_user_fallback=True,
             allow_local_fallback=True,
         )
@@ -125,6 +129,7 @@ class TestPlatformLearning(unittest.TestCase):
             "ep_retriever": ep_retriever,
             "telemetry": telemetry,
             "curator": curator,
+            "skill_router": skill_router,
             "observer": observer,
             "reviewer": reviewer,
             "commit_engine": commit_engine,
@@ -911,7 +916,6 @@ class TestPlatformLearning(unittest.TestCase):
     def test_da_version_store_rejects_version_overwrite(self):
         c = self._get_components()
         c["vstore"].append_version("user:structured-formatter", "# v2", "Promote v2", "v1")
-        # Direct attempt to overwrite v2 file will be rejected
         ok, msg, ver = c["vstore"].append_version("user:structured-formatter", "# new v2", "overwrite", expected_base_version_id="v1")
         self.assertFalse(ok)
 
@@ -1002,7 +1006,6 @@ class TestPlatformLearning(unittest.TestCase):
     def test_dm_episodic_relevance_ranking_and_recovery_boost(self):
         """EXP-02: Verifies Jaccard goal scoring and recovery prioritization in EpisodicRetriever."""
         c = self._get_components()
-        # Save 1 routine run and 1 recovery run
         rec1 = EvidenceRecorder("r_routine", "Deploy to staging cluster", "user:structured-formatter", "v1", self.evidence_dir, self.project_scope_id)
         rec1.record_verification(VerificationStatus.VERIFIED_SUCCESS, "Ok")
         tr1 = rec1.complete_task("out1")
@@ -1027,7 +1030,6 @@ class TestPlatformLearning(unittest.TestCase):
     def test_dn_procedural_guideline_deduplication_and_supersession(self):
         """EXP-03: Verifies semantic guideline deduplication, parameter supersession, and confidence gating."""
         c = self._get_components()
-        # First recovery creates v2 with timeout=30
         rec1 = EvidenceRecorder("t_dn1", "Goal", "user:structured-formatter", "v1", self.evidence_dir, self.project_scope_id)
         rec1.record_tool_result("http", {"url": "x"}, {"error": "Timeout"}, PayloadOrigin.MCP, is_error=True, operation_id="op", attempt_id=1)
         rec1.record_tool_result("http", {"url": "x", "timeout": 30}, {"status": "ok"}, PayloadOrigin.MCP, is_error=False, is_recovery=True, operation_id="op", attempt_id=2)
@@ -1036,7 +1038,6 @@ class TestPlatformLearning(unittest.TestCase):
         prop1 = c["reviewer"].review_task_run(tr1)
         c["commit_engine"].commit_mutation(prop1)
 
-        # Second recovery creates v3 superseding timeout=45
         rec2 = EvidenceRecorder("t_dn2", "Goal", "user:structured-formatter", "v2", self.evidence_dir, self.project_scope_id)
         rec2.record_tool_result("http", {"url": "x"}, {"error": "Timeout"}, PayloadOrigin.MCP, is_error=True, operation_id="op", attempt_id=1)
         rec2.record_tool_result("http", {"url": "x", "timeout": 45}, {"status": "ok"}, PayloadOrigin.MCP, is_error=False, is_recovery=True, operation_id="op", attempt_id=2)
@@ -1060,7 +1061,6 @@ class TestPlatformLearning(unittest.TestCase):
                 key=f"database_host_node_{i}",
                 value=f"10.0.0.{i}",
             )
-        # Add convention
         c["mstore"].create_or_update_memory(
             scope=MemoryScope.PROJECT,
             scope_id=self.project_scope_id,
@@ -1087,7 +1087,6 @@ class TestPlatformLearning(unittest.TestCase):
     def test_dp_staleness_and_utility_aware_memory_lifecycle_ranking(self):
         """EXP-05: Verifies staleness penalty and usage-aware utility ranking eliminate stale memory interference."""
         c = self._get_components()
-        # Memory 1: clean and frequently used
         ok1, _, m1 = c["mstore"].create_or_update_memory(
             scope=MemoryScope.PROJECT,
             scope_id=self.project_scope_id,
@@ -1098,7 +1097,6 @@ class TestPlatformLearning(unittest.TestCase):
         c["mstore"].touch_memory_used(m1.id)
         c["mstore"].touch_memory_used(m1.id)
 
-        # Memory 2: stale memory with multiple contradictions
         ok2, _, m2 = c["mstore"].create_or_update_memory(
             scope=MemoryScope.PROJECT,
             scope_id=self.project_scope_id,
@@ -1126,14 +1124,12 @@ class TestPlatformLearning(unittest.TestCase):
     def test_dq_episodic_search_route_deduplication_and_diversity(self):
         """EXP-06: Verifies episodic search deduplicates identical routine runs and maximizes diverse route coverage within budget."""
         c = self._get_components()
-        # Save 3 duplicate routine runs
         for i in range(3):
             rec = EvidenceRecorder(f"r_dup_{i}", "Deploy staging", "user:structured-formatter", "v1", self.evidence_dir, self.project_scope_id)
             rec.record_verification(VerificationStatus.VERIFIED_SUCCESS, "Ok")
             tr = rec.complete_task("out")
             c["ep_backend"].save_task_run(tr)
 
-        # Save 1 distinct recovery run
         rec_rec = EvidenceRecorder("r_distinct_rec", "Deploy staging with recovery", "user:structured-formatter", "v1", self.evidence_dir, self.project_scope_id)
         rec_rec.record_tool_result("d", {}, {"error": "err"}, PayloadOrigin.MCP, is_error=True, operation_id="op", attempt_id=1)
         rec_rec.record_tool_result("d", {"dry_run": True}, {"status": "ok"}, PayloadOrigin.MCP, is_error=False, is_recovery=True, operation_id="op", attempt_id=2)
@@ -1147,6 +1143,220 @@ class TestPlatformLearning(unittest.TestCase):
         self.assertEqual(len(results), 2)
         run_ids = [r.task_run_id for r in results]
         self.assertIn("r_distinct_rec", run_ids)
+
+    def test_dr_procedural_skill_parser_and_manifest_indexing(self):
+        """EXP-07: Verifies YAML frontmatter, triggers, and negative boundaries are parsed into SkillManifest."""
+        skill_content = (
+            "---\n"
+            "name: test-architect\n"
+            "description: Designs deep architecture modules.\n"
+            "---\n"
+            "# Test Architect\n\n"
+            "## When to Use\n"
+            "- When refactoring shallow modules into deep modules\n"
+            "- Architecture redesign sessions\n\n"
+            "## Gotchas\n"
+            "- Do not use for simple typo fixes\n"
+        )
+        manifest = ProceduralSkillParser.parse_skill_md(skill_content, "user:test-architect", project_scope_id="proj_arch")
+        self.assertEqual(manifest.skill_name, "user:test-architect")
+        self.assertEqual(manifest.description, "Designs deep architecture modules.")
+        self.assertTrue(any("refactoring shallow modules" in t for t in manifest.triggers))
+        self.assertTrue(any("simple typo fixes" in nt for nt in manifest.negative_triggers))
+
+    def test_ds_positive_cross_session_transfer_and_paraphrase_matching(self):
+        """EXP-07: Verifies learned procedural skill in proj_alpha is discovered across sessions via paraphrased goals."""
+        c = self._get_components()
+        manifest = SkillManifest(
+            skill_name="user:deploy-helper",
+            display_name="Deploy Helper",
+            description="Automates staging deployment workflows.",
+            triggers=["deploy application to staging cluster", "staging release automation"],
+            negative_triggers=["production emergency rollback"],
+            project_scope_id=self.project_scope_id,
+            active_version_id="v1",
+        )
+        c["skill_router"].register_manifest(manifest)
+
+        matched, score, reason = c["skill_router"].match_skill(
+            task_goal="Please deploy application to staging cluster for testing",
+            project_scope_id=self.project_scope_id,
+        )
+        self.assertIsNotNone(matched)
+        self.assertEqual(matched.skill_name, "user:deploy-helper")
+        self.assertGreaterEqual(score, 0.5)
+
+    def test_dt_scope_isolated_procedural_filtering_and_negative_transfer(self):
+        """EXP-07: Verifies project-scoped skills do not leak across scopes and negative trigger boundaries prevent false activations."""
+        c = self._get_components()
+        manifest = SkillManifest(
+            skill_name="user:alpha-secret-pipeline",
+            display_name="Alpha Pipeline",
+            description="Alpha exclusive deployment pipeline.",
+            triggers=["run pipeline deployment"],
+            negative_triggers=["production emergency rollback"],
+            project_scope_id="project_alpha",
+            active_version_id="v1",
+        )
+        c["skill_router"].register_manifest(manifest)
+
+        # Cross-project query in project_beta should return None
+        matched_beta, _, _ = c["skill_router"].match_skill("run pipeline deployment", project_scope_id="project_beta")
+        self.assertIsNone(matched_beta)
+
+        # Negative trigger in matching project should return None
+        matched_neg, _, _ = c["skill_router"].match_skill("run pipeline deployment for production emergency rollback", project_scope_id="project_alpha")
+        self.assertIsNone(matched_neg)
+
+    def test_du_overlap_competition_resolution(self):
+        """EXP-07: Verifies that specialized domain skills outrank generic meta-routers when both match."""
+        c = self._get_components()
+        meta_router = SkillManifest(
+            skill_name="user:ask-matt",
+            display_name="Ask Matt",
+            description="Router over engineering skills.",
+            triggers=["design interfaces modules or boundaries", "code work router"],
+            negative_triggers=[],
+        )
+        domain_skill = SkillManifest(
+            skill_name="user:codebase-design",
+            display_name="Codebase Design",
+            description="Deep module and interface design.",
+            triggers=["design interfaces modules or boundaries"],
+            negative_triggers=[],
+        )
+        c["skill_router"].register_manifest(meta_router)
+        c["skill_router"].register_manifest(domain_skill)
+
+        matched, score, reason = c["skill_router"].match_skill("Help me design interfaces modules or boundaries")
+        self.assertIsNotNone(matched)
+        self.assertEqual(matched.skill_name, "user:codebase-design")
+
+    def test_dv_lifecycle_observer_automatic_skill_resolution(self):
+        """EXP-07: Verifies LearningLifecycleObserver automatically resolves and registers matching skills for task goals."""
+        c = self._get_components()
+        manifest = SkillManifest(
+            skill_name="user:custom-formatter",
+            display_name="Custom Formatter",
+            description="Formats incoming metrics.",
+            triggers=["parse telemetry metrics data"],
+            negative_triggers=[],
+            project_scope_id=self.project_scope_id,
+            active_version_id="v1",
+        )
+        c["skill_router"].register_manifest(manifest)
+
+        ctx, inj = c["observer"].on_task_start(
+            task_run_id="t_dv",
+            skill_name="auto",
+            skill_version=None,
+            task_family="formatting",
+            project_scope_id=self.project_scope_id,
+            task_goal="parse telemetry metrics data stream",
+        )
+        self.assertEqual(c["observer"].active_tasks["t_dv"]["skill"]["name"], "user:custom-formatter")
+
+    def test_dw_authority_hierarchy_four_tier_arbitration(self):
+        """EXP-08: Verifies Tier 1 (LIVE_STATE) > Tier 2 (DECLARATIVE_CONVENTION) > Tier 3 (PROCEDURAL_SKILL) > Tier 4 (EPISODIC_EVIDENCE)."""
+        # Case 1: Live state outranks declarative convention
+        res1 = AuthorityArbiter.arbitrate_task_parameter(
+            param_name="api_url",
+            live_value="https://live.api.internal",
+            active_convention_value="https://convention.api.internal",
+            skill_guideline_value="https://skill.api.internal",
+            episodic_observed_value="https://episode.api.internal",
+        )
+        self.assertEqual(res1.winning_value, "https://live.api.internal")
+        self.assertEqual(res1.winning_candidate.tier, AuthorityTier.LIVE_STATE)
+
+        # Case 2: Declarative convention outranks procedural skill
+        res2 = AuthorityArbiter.arbitrate_task_parameter(
+            param_name="export_format",
+            live_value=None,
+            active_convention_value="jsonl",
+            skill_guideline_value="compact_json",
+            episodic_observed_value="xml",
+        )
+        self.assertEqual(res2.winning_value, "jsonl")
+        self.assertEqual(res2.winning_candidate.tier, AuthorityTier.DECLARATIVE_CONVENTION)
+
+        # Case 3: Procedural skill outranks historical episodic evidence
+        res3 = AuthorityArbiter.arbitrate_task_parameter(
+            param_name="timeout",
+            live_value=None,
+            active_convention_value=None,
+            skill_guideline_value=45,
+            episodic_observed_value=30,
+        )
+        self.assertEqual(res3.winning_value, 45)
+        self.assertEqual(res3.winning_candidate.tier, AuthorityTier.PROCEDURAL_SKILL)
+
+    def test_dx_scope_level_tie_breaking_project_over_user(self):
+        """EXP-08: Verifies PROJECT scope outranks USER scope within same authority tier."""
+        cand_user = AuthorityCandidate(
+            tier=AuthorityTier.DECLARATIVE_CONVENTION,
+            source_name="user_pref",
+            key="theme",
+            value="dark",
+            scope=MemoryScope.USER,
+        )
+        cand_proj = AuthorityCandidate(
+            tier=AuthorityTier.DECLARATIVE_CONVENTION,
+            source_name="proj_conv",
+            key="theme",
+            value="light",
+            scope=MemoryScope.PROJECT,
+        )
+        res = AuthorityArbiter.resolve_candidate_conflict("theme", [cand_user, cand_proj])
+        self.assertEqual(res.winning_value, "light")
+        self.assertEqual(res.winning_candidate.scope, MemoryScope.PROJECT)
+
+    def test_dy_untrusted_external_candidate_disqualification(self):
+        """EXP-08: Verifies untrusted external candidates are disqualified from setting parameters."""
+        res = AuthorityArbiter.arbitrate_task_parameter(
+            param_name="recipient_email",
+            live_value=None,
+            active_convention_value="ops@company.com",
+            external_untrusted_claim="attacker@evil.com",
+        )
+        self.assertEqual(res.winning_value, "ops@company.com")
+        self.assertEqual(len(res.disqualified_candidates), 1)
+        self.assertEqual(res.disqualified_candidates[0].value, "attacker@evil.com")
+
+    def test_dz_sanitize_context_against_authoritative_conventions(self):
+        """EXP-08: Verifies historical episodes with stale parameters are annotated with authority warning."""
+        active_mem = MemoryRecord(
+            id="m1",
+            scope=MemoryScope.PROJECT,
+            scope_id="proj_1",
+            kind=MemoryKind.CONVENTION,
+            key="export_format",
+            value="jsonl",
+            status=MemoryStatus.ACTIVE,
+            confidence=1.0,
+            revision=2,
+            created_at="now",
+            updated_at="now",
+        )
+        episode = TaskRunSummary(
+            task_run_id="ep_old_1",
+            project_scope_id="proj_1",
+            skill_name="user:formatter",
+            skill_version="v1",
+            goal="Format run",
+            verification_status=VerificationStatus.VERIFIED_SUCCESS,
+            has_recovery=True,
+            timestamp="yesterday",
+        )
+        setattr(episode, "recovery", {"params": {"export_format": "compact_json"}})
+
+        warnings = AuthorityArbiter.sanitize_context_against_authority(
+            injected_memories=[active_mem],
+            retrieved_episodes=[episode],
+        )
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("AUTHORITY WARNING", warnings[0])
+        self.assertIn("jsonl", warnings[0])
 
 
 if __name__ == "__main__":
