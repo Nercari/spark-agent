@@ -1,21 +1,19 @@
 """Identity resolution runtime adapter with zero personal email dependencies."""
 
 import os
+import hashlib
 from typing import Optional
 
 
-class IdentityResolutionRuntimeAdapter:
-    """Resolves authenticated user scope ID without leaking personal identifiers into codebase."""
+def resolve_runtime_user_id(explicit_user_id: Optional[str] = None) -> str:
+    """Resolves opaque user identity for declarative scoping without baking personal emails into code."""
+    if explicit_user_id and explicit_user_id.strip():
+        return explicit_user_id.strip()
 
-    def __init__(self, fallback_scope_id: Optional[str] = None):
-        self.fallback_scope_id = fallback_scope_id
+    # Fall back to environment variable or stable system hash
+    env_user = os.environ.get("SPARK_USER_ID") or os.environ.get("USER") or os.environ.get("USERNAME")
+    if env_user:
+        # Return hashed stable identifier to ensure privacy and cross-environment stability
+        return f"usr_{hashlib.sha256(env_user.encode('utf-8')).hexdigest()[:12]}"
 
-    def resolve_active_user_scope_id(self, opaque_authenticated_id: Optional[str] = None) -> Optional[str]:
-        if opaque_authenticated_id:
-            return opaque_authenticated_id
-
-        env_user = os.environ.get("SPARK_USER_SCOPE_ID")
-        if env_user:
-            return env_user
-
-        return self.fallback_scope_id
+    return "usr_default_spark"

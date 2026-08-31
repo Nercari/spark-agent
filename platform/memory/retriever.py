@@ -1,4 +1,4 @@
-"""Memory Retriever: Relevance Scoring, Utility Ranking, and Staleness Deprioritization (EXP-04 & EXP-05)."""
+"""Declarative Memory Retrieval Engine (EXP-04 Relevance Scoring & EXP-05 Staleness Penalties)."""
 
 from typing import List, Optional
 from platform.memory.contracts import MemoryRecord, MemoryScope, MemoryKind, MemoryStatus
@@ -32,7 +32,7 @@ class MemoryRetriever:
         if record.last_used_at:
             score += 0.2
 
-        # Staleness & conflict penalties
+        # Staleness & conflict penalties (EXP-05)
         conflicts = record.metadata.get("candidate_conflicts", [])
         if conflicts:
             score -= (len(conflicts) * 0.1)
@@ -48,6 +48,7 @@ class MemoryRetriever:
         user_scope_id: Optional[str] = None,
         task_goal: Optional[str] = None,
         max_budget: int = 20,
+        allow_synthetic_user_fallback: bool = False,
     ) -> List[MemoryRecord]:
         candidates: List[MemoryRecord] = []
 
@@ -64,8 +65,14 @@ class MemoryRetriever:
                 scope_id=user_scope_id,
                 status=MemoryStatus.ACTIVE,
             ))
+        elif allow_synthetic_user_fallback:
+            candidates.extend(self.memory_store.retrieve_memories(
+                scope=MemoryScope.USER,
+                scope_id="usr_synthetic",
+                status=MemoryStatus.ACTIVE,
+            ))
 
         scored = [(m, self._compute_relevance_score(m, task_goal)) for m in candidates]
-        scored.sort(key=lambda x: (x[1], x[0].updated_at), reverse=True)
+        scored.sort(key=lambda x: (x[1], x[0].created_at), reverse=True)
 
         return [x[0] for x in scored[:max_budget]]

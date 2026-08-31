@@ -1,17 +1,17 @@
-"""Declarative Memory Store managing atomic CAS updates and record lifecycles."""
+"""Declarative Memory Store managing atomic updates, conflict resolution, and record lifecycles."""
 
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Optional, List, Dict, Any, Tuple
 from platform.memory.contracts import MemoryRecord, MemoryScope, MemoryKind, MemoryStatus
-from platform.memory.backend import LocalFilesystemMemoryBackend
+from platform.memory.backend import MemoryBackend, DurableSparkMemoryBackend
 
 
 class MemoryStore:
-    """Service layer for managing declarative memories with atomic CAS mutation, untrusted origin gating, and touch_used persistence."""
+    """Service layer managing declarative memories with atomic CAS mutation, untrusted origin gating, and touch_used persistence."""
 
-    def __init__(self, backend: Optional[LocalFilesystemMemoryBackend] = None):
-        self.backend = backend or LocalFilesystemMemoryBackend()
+    def __init__(self, backend: Optional[MemoryBackend] = None):
+        self.backend = backend or DurableSparkMemoryBackend()
 
     def get_memory(self, memory_id: str) -> Optional[MemoryRecord]:
         return self.backend.get_memory(memory_id)
@@ -36,6 +36,7 @@ class MemoryStore:
         kind: MemoryKind,
         key: str,
         value: Any,
+        evidence_ids: Optional[List[str]] = None,
         is_trusted_user_origin: bool = True,
         metadata: Optional[Dict[str, Any]] = None,
         expected_active_revision: Optional[int] = None,
@@ -66,16 +67,14 @@ class MemoryStore:
             kind=kind,
             key=key,
             value=value,
-            status=MemoryStatus.ACTIVE,
-            confidence=1.0,
-            revision=active_rec.revision + 1 if active_rec else 1,
+            provenance_evidence_ids=evidence_ids or [],
             created_at=active_rec.created_at if active_rec else now_iso,
-            updated_at=now_iso,
             last_confirmed_at=now_iso,
+            status=MemoryStatus.ACTIVE,
             metadata=metadata or {},
         )
 
-        expected_rev = active_rec.revision if active_rec else None
+        expected_rev = active_rec.metadata.get("revision", 1) if active_rec else None
         if expected_active_revision is not None:
             expected_rev = expected_active_revision
 
