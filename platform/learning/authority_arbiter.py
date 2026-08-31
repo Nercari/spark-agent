@@ -42,7 +42,7 @@ class AuthorityCandidate:
 
 
 @dataclass
-class AuthorityResolution:
+class ArbitrationResult:
     key: str
     winning_value: Any
     winning_candidate: AuthorityCandidate
@@ -52,6 +52,10 @@ class AuthorityResolution:
     warnings: List[str] = field(default_factory=list)
 
 
+# Alias for backward compatibility
+AuthorityResolution = ArbitrationResult
+
+
 class AuthorityArbiter:
     """Arbiter that deterministically resolves conflicts between live state, declarative conventions, procedural skills, and episodic history."""
 
@@ -59,7 +63,7 @@ class AuthorityArbiter:
     def resolve_candidate_conflict(
         key: str,
         candidates: List[AuthorityCandidate],
-    ) -> AuthorityResolution:
+    ) -> ArbitrationResult:
         if not candidates:
             raise ValueError(f"Cannot resolve authority without candidates for key {key}")
 
@@ -101,7 +105,7 @@ class AuthorityArbiter:
 
         reason = f"Candidate from {winner.source_name} selected as highest authority (Tier {winner.tier.name})."
 
-        return AuthorityResolution(
+        return ArbitrationResult(
             key=key,
             winning_value=winner.value,
             winning_candidate=winner,
@@ -120,7 +124,7 @@ class AuthorityArbiter:
         skill_guideline_value: Optional[Any] = None,
         episodic_observed_value: Optional[Any] = None,
         external_untrusted_claim: Optional[Any] = None,
-    ) -> AuthorityResolution:
+    ) -> ArbitrationResult:
         candidates: List[AuthorityCandidate] = []
 
         if live_value is not None:
