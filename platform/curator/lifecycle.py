@@ -84,7 +84,7 @@ class LearningLifecycleObserver:
         )
         self.runtime_adapter = runtime_adapter
         self.allow_local_fallback = allow_local_fallback
-        self.skill_router = skill_router or ProceduralSkillRouter(base_skills_dir=self.version_store.base_skills_dir)
+        self.skill_router = skill_router or ProceduralSkillRouter(version_store=self.version_store)
         self.memory_context_mgr = MemoryContextManager(
             memory_store=self.memory_store,
             allow_synthetic_user_fallback=allow_synthetic_user_fallback,
@@ -106,10 +106,10 @@ class LearningLifecycleObserver:
         effective_skill = skill_name
         effective_ver = skill_version
         if (not effective_skill or effective_skill == "auto") and task_goal:
-            matched_manifest, score, reason = self.skill_router.match_skill(task_goal, project_scope_id)
-            if matched_manifest:
-                effective_skill = matched_manifest.skill_name
-                effective_ver = matched_manifest.active_version_id
+            match_res = self.skill_router.match_skill(task_goal, project_scope_id, user_scope_id)
+            if match_res:
+                effective_skill = match_res.skill_name
+                effective_ver = match_res.version_id
 
         effective_skill = effective_skill or "user:structured-formatter"
         effective_ver = effective_ver or self.version_store.get_active_version_id(effective_skill) or "v1"
