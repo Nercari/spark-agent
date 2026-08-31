@@ -35,7 +35,6 @@ class CuratorTriggerPolicy:
         effective_skill_used: Optional[UsageState] = None,
     ) -> Tuple[bool, str]:
         if task_run.verification_status == VerificationStatus.VERIFIED_FAILURE:
-            # Trigger evaluation on learned version failure ONLY if skill was observably used or telemetry shows attributable failure
             if task_run.skill_version and task_run.skill_version != "v1":
                 if effective_skill_used == UsageState.TRUE or (skill_telemetry and skill_telemetry.verified_failure_count > 0):
                     return True, f"verified_failure_on_learned_version_{task_run.skill_version}"
@@ -104,7 +103,6 @@ class LearningLifecycleObserver:
         max_memory_budget: int = 20,
     ) -> Tuple[str, List[MemoryRecord]]:
         """Hook called at task startup: injects declarative context and records artifact retrieval state."""
-        # Automatic procedural skill resolution if not explicitly specified
         effective_skill = skill_name
         effective_ver = skill_version
         if (not effective_skill or effective_skill == "auto") and task_goal:
@@ -208,7 +206,6 @@ class LearningLifecycleObserver:
         sk_name = task_run.skill_name
         sk_ver = task_run.skill_version
 
-        # Determine observed effect for Skill under strict attribution discipline
         effect = ObservedEffect.UNKNOWN
         if task_run.verification_status == VerificationStatus.VERIFIED_SUCCESS:
             if effective_skill_used == UsageState.TRUE and not recovery_required:
@@ -225,7 +222,6 @@ class LearningLifecycleObserver:
         else:
             effect = ObservedEffect.UNKNOWN
 
-        # Record single final telemetry record for Skill
         try:
             self.telemetry.record_skill_outcome(
                 skill_name=sk_name,
@@ -241,14 +237,12 @@ class LearningLifecycleObserver:
         except Exception as e:
             logger.warning(f"Telemetry logging error for skill on task complete: {e}")
 
-        # Record single final telemetry record for each injected Memory & touch used memories
         injected_mems = task_state["memories"] if task_state else {}
         for mem_id, mdata in injected_mems.items():
             try:
                 m_used = mdata["used"]
                 m_effect = ObservedEffect.UNKNOWN
 
-                # Touch memory when used or when task verified successfully without negative indication
                 if m_used == UsageState.TRUE or (m_used != UsageState.FALSE and task_run.verification_status == VerificationStatus.VERIFIED_SUCCESS):
                     self.memory_store.touch_memory_used(mem_id)
 
@@ -263,14 +257,12 @@ class LearningLifecycleObserver:
             except Exception as e:
                 logger.warning(f"Telemetry logging error for memory {mem_id} on task complete: {e}")
 
-        # Ingest declarative facts and candidate conflicts
         try:
             learned_mems = self.memory_context_mgr.process_task_for_memory_learning(task_run)
             result["learned_memories"] = [m.id for m in learned_mems]
         except Exception as e:
             logger.warning(f"Memory ingestion error on task complete: {e}")
 
-        # Evaluate Skill Curator Trigger Policy
         try:
             skill_telem = self.telemetry.get_skill_telemetry(
                 skill_name=sk_name,
@@ -310,7 +302,6 @@ class LearningLifecycleObserver:
         except Exception as e:
             logger.warning(f"Curator trigger evaluation error for skill: {e}")
 
-        # Evaluate Memory Curator Trigger Policy
         try:
             candidate_mems = self.memory_store.retrieve_memories(
                 scope=MemoryScope.PROJECT,
