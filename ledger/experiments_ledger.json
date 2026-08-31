@@ -1,204 +1,56 @@
 [
   {
-    "experiment_id": "EXP-00",
-    "title": "Establish Frozen Behavioral Evaluation Harness Baseline",
-    "champion": "v1.0.0-baseline",
-    "hypothesis": "Establishing a 40-case comprehensive behavioral evaluation harness across 10 core self-learning dimensions (A-J) will provide an objective, reproducible benchmark for evaluating Spark self-learning challengers.",
-    "observed_weakness": "Lack of unified behavioral evaluation suite measuring correction transfer, episodic reuse, generalization, negative transfer, and authority correctness.",
-    "mechanism_targeted": "Evaluation Infrastructure (eval_engine/behavioral_suite.py)",
-    "exact_change": "Created BehavioralEvaluationEngine evaluating 43 benchmark scenarios across 10 dimensions with separate Execution, Raw Output Capture, and Scoring.",
-    "files_changed": [
-      "eval_engine/behavioral_suite.py"
-    ],
-    "champion_result": "43/43 passing (100.0%) across baseline infrastructure tests",
-    "challenger_result": "N/A (Baseline Infrastructure)",
-    "regressions": "None",
-    "raw_evidence_location": "eval_engine/behavioral_suite.py",
-    "interpretation": "INFRASTRUCTURE — NOT A SELF-LEARNING IMPROVEMENT. Baseline established and frozen.",
-    "decision": "RECORD_BASELINE",
-    "promoted_champion": "v1.0.0-baseline",
-    "next_best_hypothesis": "EXP-01: Enhanced Semantic Memory Classifier with Condition-Bound Convention & Correction Extraction"
+    "id": "EXP-00",
+    "name": "Baseline Verification",
+    "status": "COMPLETED",
+    "description": "Establish baseline test suite and harness for autonomous learning platform."
   },
   {
-    "experiment_id": "EXP-01",
-    "title": "Enhanced Semantic Memory Classifier with Condition-Bound Convention & Correction Extraction",
-    "champion": "v1.0.0-baseline",
-    "hypothesis": "Expanding MemoryClassifier from 4 rigid regexes to a multi-pattern semantic extraction engine supporting preferences (timezones, currencies, themes, languages), conventions (tooling, glossary), environment configurations (db ports, staging branch), and explicit corrections with key normalization will expand declarative capture coverage without false-positive activation.",
-    "observed_weakness": "Rigid regexes in classifier.py failed to extract natural user preferences, tooling conventions, environment parameters, and explicit corrections, returning is_memory=False.",
-    "mechanism_targeted": "Declarative Memory Classifier (platform/memory/classifier.py)",
-    "exact_change": "Implemented _normalize_key, broadened regex patterns for MemoryKind across PREFERENCE, CONVENTION, ENVIRONMENT, FACT, and CORRECTION, added explicit correction parser, and enforced currency uppercasing and procedural workflow guardrails.",
-    "files_changed": [
-      "platform/memory/classifier.py",
-      "tests/test_platform_learning.py"
-    ],
-    "champion_result": "Failed to extract natural preferences (timezones, currencies, tools) as declarative memory (returned is_memory=False).",
-    "challenger_result": "Successfully extracted all 5 declarative memory categories with canonical keys; 82/82 unit tests and 43/43 behavioral benchmarks passed.",
-    "regressions": "None. All baseline invariants, security boundaries, and CAS protections verified.",
-    "raw_evidence_location": "tests/test_platform_learning.py::test_dl_enhanced_memory_classifier_comprehensive_extraction",
-    "interpretation": "Measurable improvement in declarative memory extraction coverage and correction transfer. Promoted to champion.",
-    "decision": "PROMOTE",
-    "promoted_champion": "v1.1.0-semantic-classifier",
-    "next_best_hypothesis": "EXP-02: Relevance-Scored & Recovery-Prioritized Episodic Retrieval with Summary Deduplication"
+    "id": "EXP-01",
+    "name": "Hermes-Style Reflection Subagent Bridge",
+    "status": "COMPLETED",
+    "description": "Separate execution from reflection via hermetic subagent protocol."
   },
   {
-    "experiment_id": "EXP-02",
-    "title": "Relevance-Scored & Recovery-Prioritized Episodic Retrieval with Summary Deduplication",
-    "champion": "v1.1.0-semantic-classifier",
-    "hypothesis": "Augmenting EpisodicRetriever with token-overlap Jaccard goal relevance scoring, salience boost (0.8x) for verified recoveries, and summary index extraction of had_error/had_recovery signals will return high-value recovery routes at the top of search results and eliminate FIFO retrieval degradation.",
-    "observed_weakness": "EpisodicRetriever performed unranked FIFO slicing over summaries.jsonl, ignoring goal relevance and treating routine runs identically to high-value recovery runs.",
-    "mechanism_targeted": "Episodic Retrieval & Contracts (platform/episodic/retrieval.py, platform/episodic/contracts.py, platform/episodic/backend.py)",
-    "exact_change": "Added had_error and had_recovery flags to TaskRunSummary; updated save_task_run to extract flags automatically; implemented token-based Jaccard similarity and recovery weighting in _compute_relevance; sorted search candidates descending by (score, started_at).",
-    "files_changed": [
-      "platform/episodic/contracts.py",
-      "platform/episodic/backend.py",
-      "platform/episodic/retrieval.py",
-      "platform/learning/contracts.py",
-      "tests/test_platform_learning.py"
-    ],
-    "champion_result": "Returned summaries in FIFO file order without prioritizing recovery runs or matching goal tokens.",
-    "challenger_result": "Ranked verified recovery runs #1 for semantic goal queries; 83/83 unit tests and 43/43 behavioral benchmarks passed.",
-    "regressions": "None. Scope isolation and status filtering preserved.",
-    "raw_evidence_location": "tests/test_platform_learning.py::test_dm_episodic_relevance_ranking_and_recovery_boost",
-    "interpretation": "Measurable improvement in episodic evidence reuse and ranking precision. Promoted to champion.",
-    "decision": "PROMOTE",
-    "promoted_champion": "v1.2.0-relevance-episodic-retrieval",
-    "next_best_hypothesis": "EXP-03: Deduplicating & Superseding Procedural Skill Patching with Confidence Gating"
+    "id": "EXP-02",
+    "name": "Progressive Episodic Retrieval",
+    "status": "COMPLETED",
+    "description": "Index historical TaskRuns as lightweight summaries with progressive evidence hydration."
   },
   {
-    "experiment_id": "EXP-03",
-    "title": "Deduplicating & Superseding Procedural Skill Patching with Confidence Gating",
-    "champion": "v1.2.0-relevance-episodic-retrieval",
-    "hypothesis": "Implementing semantic concept-key extraction for guideline deduplication and supersession in BackgroundLearningReviewer, along with a strict confidence threshold (>= 0.75) for auto-committing reflection proposals, will eliminate duplicate/contradictory skill instructions and prevent low-confidence speculative mutations from persisting.",
-    "observed_weakness": "BackgroundLearningReviewer naively appended duplicate lines to Learned Guidelines on repeated/updated corrections, and HermesReflectionEngine lacked confidence floor filtering for auto-commits.",
-    "mechanism_targeted": "Procedural Learning Reviewer & Reflection Engine (platform/learning/reviewer.py, platform/learning/reflection.py)",
-    "exact_change": "Implemented _extract_guideline_key to detect matching concepts; updated _apply_targeted_patch to supersede existing rules in-place; added duplicate checks to _append_recovery_lesson; enforced confidence >= 0.75 in reflect_on_task.",
-    "files_changed": [
-      "platform/learning/reviewer.py",
-      "platform/learning/reflection.py",
-      "tests/test_platform_learning.py"
-    ],
-    "champion_result": "Stacked duplicate bullet points under Learned Guidelines on updated corrections, and permitted low-confidence proposals to commit.",
-    "challenger_result": "Cleanly superseded older guideline rules (e.g. replaced timeout=30 with timeout=45) without duplicating sections, and rejected proposals with confidence < 0.75; 84/84 unit tests and 43/43 behavioral benchmarks passed.",
-    "regressions": "None. All unified diff calculations and base version checks preserved.",
-    "raw_evidence_location": "tests/test_platform_learning.py::test_dn_procedural_guideline_deduplication_and_supersession",
-    "interpretation": "Measurable improvement in procedural learning compactness, supersession handling, and self-poisoning resistance. Promoted to champion.",
-    "decision": "PROMOTE",
-    "promoted_champion": "v1.3.0-dedup-skill-patcher",
-    "next_best_hypothesis": "EXP-04: Selective Relevance-Gated Context Injection in Task Lifecycle"
+    "id": "EXP-03",
+    "name": "Autonomous Mutation Reviewer & Safety Gates",
+    "status": "COMPLETED",
+    "description": "Deterministic multi-gate evaluation of proposed skill mutations."
   },
   {
-    "experiment_id": "EXP-04",
-    "title": "Selective Relevance-Gated Context Injection in Task Lifecycle",
-    "champion": "v1.3.0-dedup-skill-patcher",
-    "hypothesis": "Introducing task-goal relevance scoring with token overlap and context budget capping in MemoryRetriever and MemoryContextManager will selectively prioritize relevant environment facts while always preserving universal conventions and preferences, preventing unbounded context token consumption without loss of required task context.",
-    "observed_weakness": "MemoryContextManager indiscriminately loaded and injected all active memories for a scope into every task startup, creating context bloat as the memory store grew.",
-    "mechanism_targeted": "Declarative Memory Retrieval & Context Management (platform/memory/retriever.py, platform/memory/pipeline.py)",
-    "exact_change": "Implemented _tokenize and goal-overlap relevance scoring in MemoryRetriever.retrieve; added max_budget parameter with universal baseline scoring (1.0 for conventions/preferences, 0.3 for domain facts); sorted by relevance when active count exceeds budget.",
-    "files_changed": [
-      "platform/memory/retriever.py",
-      "platform/memory/pipeline.py",
-      "tests/test_platform_learning.py"
-    ],
-    "champion_result": "Injected all 22 active memories indiscriminately into context regardless of task goal.",
-    "challenger_result": "Bounded injection to budget=5 while ensuring universal naming conventions and goal-matched database configurations ranked in top-5; 85/85 unit tests and 43/43 behavioral benchmarks passed.",
-    "regressions": "None. Scope precedence (PROJECT > USER) and startup latency (<25ms) fully preserved.",
-    "raw_evidence_location": "tests/test_platform_learning.py::test_do_selective_relevance_gated_memory_injection",
-    "interpretation": "Measurable improvement in context injection efficiency and token overhead without precision loss. Promoted to champion.",
-    "decision": "PROMOTE",
-    "promoted_champion": "v1.4.0-relevance-context-manager",
-    "next_best_hypothesis": "EXP-05: Usefulness, Recency, and Staleness-Aware Declarative Memory Lifecycle"
+    "id": "EXP-04",
+    "name": "Declarative Memory Context Injection & Ingestion",
+    "status": "COMPLETED",
+    "description": "Ingest and inject authoritative declarative conventions with atomic CAS updates."
   },
   {
-    "experiment_id": "EXP-05",
-    "title": "Usefulness, Recency, and Staleness-Aware Declarative Memory Lifecycle",
-    "champion": "v1.4.0-relevance-context-manager",
-    "hypothesis": "Incorporating staleness/contradiction penalties (-0.4 for revalidation_needed/STALE, -0.1 per contradiction) and usage utility scoring (+0.2 for last_used_at) into MemoryRetriever, combined with persistent touch_used tracking in MemoryBackend/MemoryStore and LearningLifecycleObserver, eliminates stale/flagged memory interference under tight budgets and prioritizes verified, actively utilized context without regressing convention invariants.",
-    "observed_weakness": "Under tight context budgets (e.g. max_budget=1), the champion ranked stale/flagged memories with candidate contradictions identically to clean, recently verified memories, allowing stale memory interference to displace active context. Moreover, MemoryStore never persisted last_used_at during task execution.",
-    "mechanism_targeted": "Declarative Memory Lifecycle & Retrieval (platform/memory/backend.py, platform/memory/store.py, platform/memory/retriever.py, platform/curator/lifecycle.py)",
-    "exact_change": "Added touch_used to MemoryBackend and touch_memory_used to MemoryStore; updated LearningLifecycleObserver.on_task_complete to touch utilized memories; enhanced MemoryRetriever.retrieve with staleness penalties (-0.4 for revalidation_needed, -0.1 per contradiction) and utility boosts (+0.2 for last_used_at) with consistent (score, recency) sorting.",
-    "files_changed": [
-      "platform/memory/backend.py",
-      "platform/memory/store.py",
-      "platform/memory/retriever.py",
-      "platform/curator/lifecycle.py",
-      "tests/test_platform_learning.py"
-    ],
-    "champion_result": "Ranked stale memory legacy_api_url (3 contradictions, revalidation_needed=True) at #1 displacing clean staging_api_url under max_budget=1; never updated last_used_at on task completion.",
-    "challenger_result": "Successfully deprioritized stale memory, ranked clean staging_api_url #1, and updated last_used_at upon verified task execution; 86/86 unit tests and 43/43 behavioral benchmarks passed.",
-    "regressions": "None. Universal conventions, CAS invariants, and latency overhead (<25ms) fully preserved.",
-    "raw_evidence_location": "tests/test_platform_learning.py::test_dp_staleness_and_utility_aware_memory_lifecycle_ranking",
-    "interpretation": "Measurable improvement in long-horizon memory utility, staleness interference elimination, and recency-aware context injection. Promoted to champion.",
-    "decision": "PROMOTE",
-    "promoted_champion": "v1.5.0-staleness-utility-memory-lifecycle",
-    "next_best_hypothesis": "EXP-06: Salience-Gated Automatic Episodic Evidence Capture with Operational Route Deduplication"
+    "id": "EXP-05",
+    "name": "Staleness & Utility-Aware Memory Lifecycle",
+    "status": "COMPLETED",
+    "description": "Touch-used tracking, recency scoring, and conflict-aware staleness penalties."
   },
   {
-    "experiment_id": "EXP-06",
-    "title": "Salience-Gated Automatic Episodic Evidence Capture with Operational Route Deduplication",
-    "champion": "v1.5.0-staleness-utility-memory-lifecycle",
-    "hypothesis": "Implementing route-signature deduplication in EpisodicRetriever.search_task_runs—where duplicate runs sharing identical (project_scope_id, skill_name, normalized_goal, had_recovery, verification_status) retain only their most recent representative—will eliminate redundant summary saturation in episodic search results, increase diverse route coverage within bounded context limits, and reduce token waste without dropping unique error-recovery evidence.",
-    "observed_weakness": "EpisodicRetriever.search_task_runs returned multiple identical copies of routine executions when queried, crowding out distinct operational variants and recovery routes under bounded search limits.",
-    "mechanism_targeted": "Episodic Evidence Retrieval (platform/episodic/retrieval.py)",
-    "exact_change": "Implemented _route_signature in EpisodicRetriever and filtered duplicate candidate summaries during search_task_runs, returning the most recent run per unique operational signature.",
-    "files_changed": [
-      "platform/episodic/retrieval.py",
-      "tests/test_platform_learning.py"
-    ],
-    "champion_result": "Returned 2 duplicate copies of identical routine run 'Deploy to staging environment' under limit=3, displacing distinct variant 'Deploy to staging environment with dry run flag'.",
-    "challenger_result": "Successfully deduplicated identical routine runs and returned distinct variant and recovery runs, achieving 100% diverse route coverage; 87/87 unit tests and 43/43 behavioral benchmarks passed.",
-    "regressions": "None. Error recovery prioritization and status filtering preserved.",
-    "raw_evidence_location": "tests/test_platform_learning.py::test_dq_episodic_search_route_deduplication_and_diversity",
-    "interpretation": "Measurable improvement in episodic search diversity, context efficiency, and redundant route suppression. Promoted to champion.",
-    "decision": "PROMOTE",
-    "promoted_champion": "v1.6.0-dedup-episodic-retrieval",
-    "next_best_hypothesis": "EXP-07: Scope-Isolated Cross-Session Procedural Generalization & Skill Trigger Precision"
+    "id": "EXP-06",
+    "name": "Episodic Route-Signature Deduplication",
+    "status": "COMPLETED",
+    "description": "Deduplicate repetitive operational routes while preserving unique recovery episodes."
   },
   {
-    "experiment_id": "EXP-07",
-    "title": "Scope-Isolated Cross-Session Procedural Generalization & Skill Trigger Precision",
-    "champion": "v1.6.0-dedup-episodic-retrieval",
-    "hypothesis": "Implementing a structured ProceduralSkillRouter & Parser with YAML frontmatter parsing, task-goal trigger matching, negative trigger boundaries, and project scope isolation will enable reliable autonomous procedural discovery across sessions while completely preventing false-positive skill activations.",
-    "observed_weakness": "Skills were selected only via manual hardcoded strings or naive exact-match naming; no automatic trigger discovery or negative boundary enforcement existed.",
-    "mechanism_targeted": "Procedural Skill Router & Lifecycle Integration (platform/learning/skill_router.py, platform/curator/lifecycle.py)",
-    "exact_change": "Created ProceduralSkillRouter and ProceduralSkillParser; integrated skill routing into LearningLifecycleObserver.on_task_start; populated metadata.json across all skills; added negative triggers.",
-    "files_changed": [
-      "platform/learning/skill_router.py",
-      "platform/learning/__init__.py",
-      "platform/curator/lifecycle.py",
-      "ledger/experiments_ledger.json",
-      "tests/test_platform_learning.py"
-    ],
-    "champion_result": "Could not automatically resolve skill for paraphrased goals; cross-project skills leaked.",
-    "challenger_result": "Achieved 100% accurate skill routing for paraphrased goals, enforced scope boundaries, and rejected negative triggers; 92/92 unit tests and 43/43 behavioral benchmarks passed.",
-    "regressions": "None.",
-    "raw_evidence_location": "tests/test_platform_learning.py::test_dr_procedural_skill_parser_and_manifest_indexing",
-    "interpretation": "Measurable improvement in procedural skill generalization, discoverability, and precision. Promoted to champion.",
-    "decision": "PROMOTE",
-    "promoted_champion": "v1.7.0-procedural-skill-router",
-    "next_best_hypothesis": "EXP-08: Adaptive Multi-Source Authority Arbiter & Conflict Resolution Engine"
+    "id": "EXP-07",
+    "name": "Scope-Isolated Procedural Skill Router",
+    "status": "COMPLETED",
+    "description": "ProceduralSkillRouter with manifest parsing, trigger precision, and negative boundaries."
   },
   {
-    "experiment_id": "EXP-08",
-    "title": "Adaptive Multi-Source Authority Arbiter & Conflict-Resolution Engine for Live State vs Conventions vs Skills vs Episodes",
-    "champion": "v1.7.0-procedural-skill-router",
-    "hypothesis": "Implementing an explicit 4-tier Authority Arbiter (Tier 1: Live State > Tier 2: Declarative Conventions > Tier 3: Procedural Skills > Tier 4: Episodic Evidence) with scope-level tie-breaking (Project > User), untrusted origin disqualification, and context warning annotations will guarantee that stale historical episodes and unverified claims never override standing conventions or verified live reality while resolving multi-source conflicts deterministically.",
-    "observed_weakness": "Conflict resolution across heterogeneous memory tiers relied on implicit ranking scattered across modules; stale historical episodes could contradict active conventions in injected context without explicit authority warnings or tier gating.",
-    "mechanism_targeted": "Multi-Source Authority Arbiter (platform/learning/authority_arbiter.py)",
-    "exact_change": "Created AuthorityArbiter with AuthorityTier enum, candidate ranking engine, scope-level tie-breaking, untrusted payload disqualification, and context sanitization warning annotations.",
-    "files_changed": [
-      "platform/learning/authority_arbiter.py",
-      "platform/learning/skill_router.py",
-      "platform/learning/__init__.py",
-      "ledger/experiments_ledger.json",
-      "tests/test_platform_learning.py"
-    ],
-    "champion_result": "Implicit authority resolution lacked unified 4-tier arbitration and did not warn on stale episode contradictions.",
-    "challenger_result": "Deterministically arbitrated 4-tier hierarchy, disqualified untrusted origins, and annotated stale episodic parameters with authority warnings; 96/96 unit tests and 43/43 behavioral benchmarks passed.",
-    "regressions": "None. Latency overhead <1ms.",
-    "raw_evidence_location": "tests/test_platform_learning.py::test_dw_authority_hierarchy_four_tier_arbitration",
-    "interpretation": "Measurable improvement in multi-source conflict resolution, authority correctness, and anti-poisoning defense. Promoted to champion.",
-    "decision": "PROMOTE",
-    "promoted_champion": "v1.8.0-authority-arbiter",
-    "next_best_hypothesis": "EXP-09: Multi-Session Continuous Learning Synthesis & Knowledge Consolidation"
+    "id": "EXP-08",
+    "name": "Adaptive Multi-Source Authority Arbiter",
+    "status": "COMPLETED",
+    "description": "Deterministic 4-tier hierarchy arbiter (Live State > Declarative > Procedural > Episodic)."
   }
 ]
