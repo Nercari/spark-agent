@@ -1,168 +1,99 @@
-"""SQLite Storage Backend for Skill Versions, TaskRuns, and Reflection Logs."""
+"""Filesystem and Runtime Storage Backend for Versioned Procedural Skills."""
 
 import json
 import os
-import sqlite3
+import shutil
 import threading
-from typing import Any, Dict, List, Optional
-from platform.learning.contracts import SkillVersion, TaskRun, LearningMutation
+from abc import ABC, abstractmethod
+from typing import Dict, List, Optional
+from platform.learning.contracts import SkillVersion, TaskRun, generate_sha256
 
 
-class SQLiteLearningBackend:
-    """Thread-safe SQLite storage for versioned procedural skills and immutable execution logs."""
+class SkillBackend(ABC):
+    """Abstract interface for procedural skill storage."""
 
-    _db_locks: Dict[str, threading.Lock] = {}
-    _global_lock = threading.Lock()
+    @abstractmethod
+    def save_version(self, skill_name: str, version: SkillVersion):
+        pass
 
-    def __init__(self, db_path: Optional[str] = None):
-        self.db_path = db_path or os.path.expanduser("~/.spark/learning.sqlite3")
-        os.makedirs(os.path.dirname(os.path.abspath(self.db_path)), exist_ok=True)
-        with self._global_lock:
-            if self.db_path not in self._db_locks:
-                self._db_locks[self.db_path] = threading.Lock()
-        self._lock = self._db_locks[self.db_path]
-        self._init_db()
+    @abstractmethod
+    def get_version(self, skill_name: str, version_id: str) -> Optional[SkillVersion]:
+        pass
 
-    def _get_connection(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path, timeout=30.0)
-        conn.row_factory = sqlite3.Row
-        return conn
+    @abstractmethod
+    def list_versions(self, skill_name: str) -> List[str]:
+        pass
 
-    def _init_db(self):
+
+class LocalFilesystemSkillBackend(SkillBackend):
+    """Local filesystem implementation of SkillBackend storing version manifests in skills/<name>/versions/."""
+
+    def __init__(self, base_skills_dir: Optional[str] = None):
+        self.base_skills_dir = base_skills_dir or os.path.expanduser("~/.spark/skills")
+        self._lock = threading.Lock()
+        os.makedirs(self.base_skills_dir, exist_ok=True)
+
+    def _get_skill_dir(self, skill_name: str) -> str:
+        clean = skill_name.split(":", 1)[-1] if ":" in skill_name else skill_name
+        return os.path.join(self.base_skills_dir, clean)
+
+    def _get_versions_dir(self, skill_name: str) -> str:
+        return os.path.join(self._get_skill_dir(skill_name), "versions")
+
+    def save_version(self, skill_name: str, version: SkillVersion):
         with self._lock:
-            conn = self._get_connection()
-            try:
-                cur = conn.cursor()
-                cur.execute("""
-                    CREATE TABLE IF NOT EXISTS skill_versions (
-                        skill_name TEXT NOT NULL,
-                        version_id TEXT NOT NULL,
-                        parent_version_id TEXT,
-                        content TEXT NOT NULL,
-                        content_hash TEXT NOT NULL,
-                        created_at TEXT NOT NULL,
-                        created_from_task_run_id TEXT,
-                        change_reason TEXT,
-                        diff TEXT,
-                        status TEXT NOT NULL,
-                        PRIMARY KEY (skill_name, version_id)
-                    )
-                """)
-                cur.execute("""
-                    CREATE TABLE IF NOT EXISTS task_runs (
-                        id TEXT PRIMARY KEY,
-                        goal TEXT NOT NULL,
-                        started_at TEXT NOT NULL,
-                        completed_at TEXT NOT NULL,
-                        user_scope_id TEXT NOT NULL,
-                        project_scope_id TEXT NOT NULL,
-                        skill_name TEXT NOT NULL,
-                        skill_version TEXT NOT NULL,
-                        evidence_events TEXT NOT NULL,
-                        final_output TEXT,
-                        verification_status TEXT NOT NULL,
-                        verification_details TEXT NOT NULL
-                    )
-                """)
-                cur.execute("""
-                    CREATE TABLE IF NOT EXISTS learning_mutations (
-                        id TEXT PRIMARY KEY,
-                        task_run_id TEXT NOT NULL,
-                        operation TEXT NOT NULL,
-                        target_skill TEXT NOT NULL,
-                        base_version_id TEXT NOT NULL,
-                        base_version_hash TEXT NOT NULL,
-                        proposed_content TEXT NOT NULL,
-                        diff TEXT NOT NULL,
-                        reason TEXT NOT NULL,
-                        decision TEXT NOT NULL,
-                        evidence_ids TEXT NOT NULL,
-                        recovery_verified INTEGER NOT NULL,
-                        created_at TEXT NOT NULL,
-                        committed_at TEXT
-                    )
-                """)
-                conn.commit()
-            finally:
-                conn.close()
-
-    def save_version(self, version: SkillVersion):
-        with self._lock:
-            conn = self._get_connection()
-            try:
-                cur = conn.cursor()
-                cur.execute("""
-                    INSERT OR REPLACE INTO skill_versions (
-                        skill_name, version_id, parent_version_id, content, content_hash,
-                        created_at, created_from_task_run_id, change_reason, diff, status
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    version.skill_name,
-                    version.version_id,
-                    version.parent_version_id,
-                    version.content,
-                    version.content_hash,
-                    version.created_at,
-                    version.created_from_task_run_id,
-                    version.change_reason,
-                    version.diff,
-                    version.status,
-                ))
-                conn.commit()
-            finally:
-                conn.close()
+            vdir = self._get_versions_dir(skill_name)
+            os.makedirs(vdir, exist_ok=True)
+            vpath = os.path.join(vdir, f"{version.version_id}.json")
+            with open(vpath, "w", encoding="utf-8") as f:
+                json.dump(version.to_dict(), f, indent=2)
 
     def get_version(self, skill_name: str, version_id: str) -> Optional[SkillVersion]:
         with self._lock:
-            conn = self._get_connection()
-            try:
-                cur = conn.cursor()
-                cur.execute("""
-                    SELECT * FROM skill_versions WHERE skill_name = ? AND version_id = ?
-                """, (skill_name, version_id))
-                row = cur.fetchone()
-                if not row:
-                    return None
-                return SkillVersion(
-                    version_id=row["version_id"],
-                    skill_name=row["skill_name"],
-                    parent_version_id=row["parent_version_id"],
-                    content=row["content"],
-                    content_hash=row["content_hash"],
-                    created_at=row["created_at"],
-                    created_from_task_run_id=row["created_from_task_run_id"],
-                    change_reason=row["change_reason"],
-                    diff=row["diff"],
-                    status=row["status"],
-                )
-            finally:
-                conn.close()
+            vpath = os.path.join(self._get_versions_dir(skill_name), f"{version_id}.json")
+            if not os.path.exists(vpath):
+                return None
+            with open(vpath, "r", encoding="utf-8") as f:
+                return SkillVersion.from_dict(json.load(f))
 
-    def save_task_run(self, task_run: TaskRun):
+    def list_versions(self, skill_name: str) -> List[str]:
         with self._lock:
-            conn = self._get_connection()
-            try:
-                cur = conn.cursor()
-                cur.execute("""
-                    INSERT OR REPLACE INTO task_runs (
-                        id, goal, started_at, completed_at, user_scope_id, project_scope_id,
-                        skill_name, skill_version, evidence_events, final_output,
-                        verification_status, verification_details
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    task_run.id,
-                    task_run.goal,
-                    task_run.started_at,
-                    task_run.completed_at,
-                    task_run.user_scope_id,
-                    task_run.project_scope_id,
-                    task_run.skill_name,
-                    task_run.skill_version,
-                    json.dumps([e.to_dict() for e in task_run.evidence_events]),
-                    task_run.final_output,
-                    task_run.verification_status.value if hasattr(task_run.verification_status, "value") else str(task_run.verification_status),
-                    json.dumps(task_run.verification_details),
-                ))
-                conn.commit()
-            finally:
-                conn.close()
+            vdir = self._get_versions_dir(skill_name)
+            if not os.path.exists(vdir):
+                return []
+            versions = []
+            for fname in sorted(os.listdir(vdir)):
+                if fname.endswith(".json"):
+                    versions.append(fname[:-5])
+            return versions
+
+
+class SparkSkillUpdateManifest:
+    """Represents a payload prepared for dispatching skill mutations to Gemini Spark runtime tools."""
+
+    def __init__(self, skill_name: str, new_content: str, change_reason: str, version_id: str):
+        self.skill_name = skill_name
+        self.new_content = new_content
+        self.change_reason = change_reason
+        self.version_id = version_id
+        self.content_hash = generate_sha256(new_content)
+
+
+class SparkRuntimeSkillBridge:
+    """Dispatches skill mutations to external tools when running in live agent environment."""
+
+    def __init__(self, update_skill_tool_fn: Optional[Any] = None):
+        self.update_skill_tool_fn = update_skill_tool_fn
+
+    def apply_runtime_mutation(self, manifest: SparkSkillUpdateManifest) -> bool:
+        if not self.update_skill_tool_fn:
+            return True
+        try:
+            self.update_skill_tool_fn(
+                name=manifest.skill_name,
+                content=manifest.new_content,
+                description=f"Auto-learned mutation {manifest.version_id}: {manifest.change_reason}",
+            )
+            return True
+        except Exception:
+            return False
