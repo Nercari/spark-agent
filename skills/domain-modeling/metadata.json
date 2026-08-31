@@ -1,18 +1,7 @@
 {
-  "skill_name": "user:domain-modeling",
-  "display_name": "Domain Modeling",
-  "description": "Domain terminology and ADR documentation.",
+  "name": "user:domain-modeling",
   "active_version_id": "v1",
   "versions": [
     "v1"
-  ],
-  "triggers": [
-    "domain model and terminology",
-    "document architecture decision record adr",
-    "update context glossary"
-  ],
-  "negative_triggers": [
-    "unrelated unit test",
-    "css styling"
   ]
 }

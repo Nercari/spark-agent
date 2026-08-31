@@ -1,18 +1,7 @@
 {
-  "skill_name": "user:codebase-design",
-  "display_name": "Codebase Design",
-  "description": "Deep module and interface design.",
+  "name": "user:codebase-design",
   "active_version_id": "v1",
   "versions": [
     "v1"
-  ],
-  "triggers": [
-    "design interfaces modules or boundaries",
-    "refactor shallow module into deep module",
-    "architectural seam design"
-  ],
-  "negative_triggers": [
-    "quick bugfix",
-    "typo fix"
   ]
 }

@@ -2,7 +2,7 @@
   "version_id": "v1",
   "skill_name": "user:grill-with-docs",
   "parent_version_id": null,
-  "content": "---\nname: grill-with-docs\ndescription: Grilling session that challenges a plan against the domain model, sharpens terminology, and updates CONTEXT.md and ADRs inline as decisions crystallise. Use before implementing major features.\n---\n# Grill With Docs\n\nUse this skill to run a disciplined interrogation session that challenges an implementation plan against authoritative documentation (ADRs, CONTEXT.md, and contracts).\n\n## When to Use\n- Pre-implementation grilling sessions for major features or architectural changes\n- Validating proposals against domain models and ADR constraints\n- Crystallizing terminology and contract boundaries\n\n## When NOT to Use\n- Minor bug fixes or isolated typo corrections\n- Routine test maintenance\n",
+  "content": "---\nname: grill-with-docs\ndescription: Grilling session that challenges a plan against the domain model, sharpens terminology, and updates CONTEXT.md and ADRs inline as decisions crystallise. Use before implementing major features.\n---\n\n# Grill with Docs\n\nGrilling session that challenges an implementation plan against the domain model.\n\n## When to Use\n- Before implementing major architectural features or changes.\n- Validating design against established invariants and ADRs.\n\n## When NOT to Use\n- Small bug fixes or routine refactors.\n- Test-only changes.\n",
   "content_hash": "25ac3970c219d5d5354f82398a0bbfea30727ba3",
   "created_at": "2026-08-25T00:00:00Z",
   "created_from_task_run_id": null,
