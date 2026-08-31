@@ -1,4 +1,4 @@
-"""Skill Version Store: Versioned Append-Only Storage & Atomic Mutation Management."""
+"""Skill Version Store: Versioned Append-Only Storage & Atomic Mutation Management (EXP-01, EXP-03)."""
 
 import json
 import os
