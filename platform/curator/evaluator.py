@@ -50,7 +50,7 @@ class CuratorEvaluator:
                 reason=f"Skill version {version_id} does not exist in version store.",
             )
 
-        # 1. Regression Check: verified failure on learned version -> recommend retirement
+        # 1. Regression Check: verified failure on attributable use of learned version -> recommend retirement
         if telemetry.verified_failure_count > 0 and telemetry.verified_success_count == 0:
             return CuratorEvaluationReport(
                 artifact_type=ArtifactType.SKILL,
@@ -60,16 +60,16 @@ class CuratorEvaluator:
                 decision=CuratorDecision.RETIRE_SKILL_VERSION,
                 observed_effect=ObservedEffect.NEGATIVE,
                 reason=(
-                    f"Skill version {version_id} caused {telemetry.verified_failure_count} verified failures "
+                    f"Skill version {version_id} caused {telemetry.verified_failure_count} verified attributable failures "
                     f"in task family '{effective_family}' without verified successes."
                 ),
                 suggested_action=f"Rollback to parent version {current_ver.parent_version_id or 'baseline'}.",
                 metrics=telemetry.to_dict(),
             )
 
-        # 2. Sparse Operational Evidence Guardrail: require >= 2 tasks before definitive longitudinal assessment
-        total_runs = telemetry.verified_success_count + telemetry.verified_failure_count
-        if total_runs < 2:
+        # 2. Sparse Operational Evidence Guardrail: require >= 2 attributable task uses before definitive assessment
+        total_attributable_runs = telemetry.verified_success_count + telemetry.verified_failure_count
+        if total_attributable_runs < 2:
             return CuratorEvaluationReport(
                 artifact_type=ArtifactType.SKILL,
                 artifact_id=skill_name,
@@ -77,11 +77,11 @@ class CuratorEvaluator:
                 task_family=effective_family,
                 decision=CuratorDecision.KEEP,
                 observed_effect=ObservedEffect.UNKNOWN,
-                reason=f"Sparse operational evidence ({total_runs} uses in '{effective_family}'); maintaining active deployment.",
+                reason=f"Sparse operational evidence ({total_attributable_runs} attributable uses in '{effective_family}'); maintaining active deployment.",
                 metrics=telemetry.to_dict(),
             )
 
-        # 3. Positive Self-Improvement Check within comparable task family
+        # 3. Positive Self-Improvement Check within comparable task family (>= 2 attributable successes)
         if telemetry.verified_success_count >= 2 and telemetry.recovery_required_count == 0:
             parent_telem = None
             if current_ver.parent_version_id:
@@ -95,7 +95,7 @@ class CuratorEvaluator:
             else:
                 reason = (
                     f"Skill version {version_id} maintains consistent verified success "
-                    f"({telemetry.verified_success_count} successes, 0 recoveries in '{effective_family}')."
+                    f"({telemetry.verified_success_count} attributable successes, 0 recoveries in '{effective_family}')."
                 )
 
             return CuratorEvaluationReport(

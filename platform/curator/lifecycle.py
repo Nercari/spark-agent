@@ -31,10 +31,13 @@ class CuratorTriggerPolicy:
     def should_evaluate_skill(
         task_run: TaskRun,
         skill_telemetry: Optional[SkillTelemetry] = None,
+        effective_skill_used: Optional[UsageState] = None,
     ) -> Tuple[bool, str]:
         if task_run.verification_status == VerificationStatus.VERIFIED_FAILURE:
+            # Trigger evaluation on learned version failure ONLY if skill was observably used or telemetry shows attributable failure
             if task_run.skill_version and task_run.skill_version != "v1":
-                return True, f"verified_failure_on_learned_version_{task_run.skill_version}"
+                if effective_skill_used == UsageState.TRUE or (skill_telemetry and skill_telemetry.verified_failure_count > 0):
+                    return True, f"verified_failure_on_learned_version_{task_run.skill_version}"
 
         if skill_telemetry and skill_telemetry.use_count >= 3 and (skill_telemetry.use_count % 3 == 0):
             return True, f"usage_milestone_{skill_telemetry.use_count}_reached"
@@ -94,11 +97,15 @@ class LearningLifecycleObserver:
         task_family: str = "default_task_family",
         project_scope_id: Optional[str] = None,
         user_scope_id: Optional[str] = None,
+        task_goal: Optional[str] = None,
+        max_memory_budget: int = 20,
     ) -> Tuple[str, List[MemoryRecord]]:
         """Hook called at task startup: injects declarative context and records artifact retrieval state."""
         context_str, injected_memories = self.memory_context_mgr.inject_task_context(
             project_scope_id=project_scope_id,
             user_scope_id=user_scope_id,
+            task_goal=task_goal,
+            max_memory_budget=max_memory_budget,
         )
 
         mem_dict = {}
@@ -153,7 +160,7 @@ class LearningLifecycleObserver:
         task_family: Optional[str] = None,
         skill_used: Optional[UsageState] = None,
     ) -> Dict[str, Any]:
-        """Hook called at task completion: persists declarative learning, logs outcome telemetry, and runs curation."""
+        """Hook called at task completion: persists declarative learning, logs outcome telemetry, touches used memory, and runs curation."""
         result: Dict[str, Any] = {
             "task_run_id": task_run.id,
             "learned_memories": [],
@@ -186,20 +193,22 @@ class LearningLifecycleObserver:
         sk_name = task_run.skill_name
         sk_ver = task_run.skill_version
 
-        # Determine observed effect for Skill
+        # Determine observed effect for Skill under strict attribution discipline
         effect = ObservedEffect.UNKNOWN
         if task_run.verification_status == VerificationStatus.VERIFIED_SUCCESS:
             if effective_skill_used == UsageState.TRUE and not recovery_required:
                 effect = ObservedEffect.POSITIVE
-            elif effective_skill_used == UsageState.FALSE or recovery_required:
+            elif effective_skill_used == UsageState.TRUE and recovery_required:
                 effect = ObservedEffect.NEUTRAL
             else:
                 effect = ObservedEffect.UNKNOWN
         elif task_run.verification_status == VerificationStatus.VERIFIED_FAILURE:
-            if effective_skill_used == UsageState.TRUE or (sk_ver and sk_ver != "v1"):
+            if effective_skill_used == UsageState.TRUE:
                 effect = ObservedEffect.NEGATIVE
             else:
                 effect = ObservedEffect.UNKNOWN
+        else:
+            effect = ObservedEffect.UNKNOWN
 
         # Record single final telemetry record for Skill
         try:
@@ -217,12 +226,16 @@ class LearningLifecycleObserver:
         except Exception as e:
             logger.warning(f"Telemetry logging error for skill on task complete: {e}")
 
-        # Record single final telemetry record for each injected Memory (conservative effect)
+        # Record single final telemetry record for each injected Memory & touch used memories
         injected_mems = task_state["memories"] if task_state else {}
         for mem_id, mdata in injected_mems.items():
             try:
                 m_used = mdata["used"]
                 m_effect = ObservedEffect.UNKNOWN
+
+                # Touch memory when used or when task verified successfully without negative indication
+                if m_used == UsageState.TRUE or (m_used != UsageState.FALSE and task_run.verification_status == VerificationStatus.VERIFIED_SUCCESS):
+                    self.memory_store.touch_memory_used(mem_id)
 
                 self.telemetry.record_memory_outcome(
                     memory_id=mem_id,
@@ -252,6 +265,7 @@ class LearningLifecycleObserver:
             should_run_skill, skill_trigger_reason = CuratorTriggerPolicy.should_evaluate_skill(
                 task_run=task_run,
                 skill_telemetry=skill_telem,
+                effective_skill_used=effective_skill_used,
             )
 
             if should_run_skill:
@@ -295,24 +309,14 @@ class LearningLifecycleObserver:
                     memory_telemetry=mem_telem,
                 )
                 if should_run_mem:
-                    mem_rep = self.curator.evaluate_memory_record(cm.id)
-                    if mem_rep.decision in {CuratorDecision.MARK_STALE, CuratorDecision.ARCHIVE_MEMORY}:
-                        mem_exec = self.curator.executor.apply_decision(mem_rep, task_run_id=task_run.id)
-                        result["memory_curator_results"].append({
-                            "memory_id": cm.id,
-                            "decision": mem_rep.decision.value,
-                            "applied": mem_exec.applied,
-                            "message": mem_exec.message,
-                        })
+                    m_rep = self.curator.evaluate_memory_record(cm.id)
+                    m_exec_res = self.curator.executor.apply_decision(
+                        report=m_rep,
+                        allow_local_fallback=True,
+                        task_run_id=task_run.id,
+                    )
+                    result["memory_curator_results"].append(m_exec_res.to_dict())
         except Exception as e:
             logger.warning(f"Curator trigger evaluation error for memory: {e}")
 
         return result
-
-    def handle_host_runtime_result(
-        self,
-        request: CuratorRuntimeRollbackRequest,
-        result: RuntimeRollbackResult,
-    ) -> CuratorExecutionResult:
-        """Resumes external host runtime rollback execution automatically."""
-        return self.curator.executor.consume_runtime_result(request, result)

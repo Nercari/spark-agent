@@ -74,6 +74,7 @@ class SkillTelemetry:
     retrieval_count: int = 0
     use_count: int = 0
     unknown_use_count: int = 0
+    unused_count: int = 0
     verified_success_count: int = 0
     verified_failure_count: int = 0
     recovery_required_count: int = 0
@@ -105,6 +106,7 @@ class MemoryTelemetry:
     retrieval_count: int = 0
     use_count: int = 0
     unknown_use_count: int = 0
+    unused_count: int = 0
     verified_success_count: int = 0
     conflict_count: int = 0
     correction_count: int = 0
