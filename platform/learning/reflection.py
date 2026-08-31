@@ -38,8 +38,8 @@ class DeterministicRecoveryAnalyzer:
 
         Returns (tool_name, lesson_statement, evidence_ids) or None.
         """
-        error_events = [e for e in task_run.evidence_events if e.metadata.get("is_error") is True or e.event_type == EventType.TOOL_RESULT and e.metadata.get("is_error")]
-        recovery_events = [e for e in task_run.evidence_events if e.metadata.get("is_recovery") is True or e.event_type == EventType.TOOL_RESULT and e.metadata.get("is_recovery")]
+        error_events = [e for e in task_run.evidence_events if e.metadata.get("is_error") is True or (e.event_type == EventType.TOOL_RESULT and e.metadata.get("is_error"))]
+        recovery_events = [e for e in task_run.evidence_events if e.metadata.get("is_recovery") is True or (e.event_type == EventType.TOOL_RESULT and e.metadata.get("is_recovery"))]
 
         if not error_events or not recovery_events:
             return None
@@ -183,6 +183,16 @@ class DirectSubagentReflectionBackend(ReflectionAgentBackend):
             return str(res), "SUCCESS"
         except Exception as ex:
             return str(ex), "SUBAGENT_FAILURE"
+
+
+class HermesSemanticReflectionSubagent:
+    """Autonomous reflection subagent analyzing causal recovery deltas."""
+
+    def __init__(self, backend: Optional[ReflectionAgentBackend] = None):
+        self.backend = backend or MockReflectionAgentBackend()
+
+    def run_reflection(self, request: SubagentInvocationRequest) -> Tuple[str, str]:
+        return self.backend.invoke_reflection(request)
 
 
 class ReflectionRuntimeBridge:
