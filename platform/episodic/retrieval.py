@@ -1,122 +1,61 @@
-"""Episodic Retriever: Relevance-Scored & Route-Deduplicated Episodic Retrieval (EXP-02 & EXP-06)."""
-
+from __future__ import annotations
 from typing import List, Optional
-from platform.episodic.backend import LocalFilesystemEpisodicBackend
-from platform.episodic.contracts import EpisodicQuery, RetrievedEvidenceSubset, TaskRunSummary
-from platform.learning.contracts import VerificationStatus, TaskRun
-
+from platform.episodic.backend import EpisodicBackend
+from platform.episodic.contracts import (
+    EpisodicSearchQuery,
+    TaskRunSummary,
+    TaskRunDetail,
+)
 
 class EpisodicRetriever:
-    """Retrieves relevant episodic summaries and bounded evidence subsets with relevance ranking and route deduplication."""
+    """High-level episodic retrieval pipeline supporting progressive disclosure,
+    project scope isolation, and route-signature deduplication."""
 
-    def __init__(self, backend: Optional[LocalFilesystemEpisodicBackend] = None):
-        self.backend = backend or LocalFilesystemEpisodicBackend()
+    def __init__(self, backend: EpisodicBackend):
+        self._backend = backend
 
-    def _compute_relevance_score(self, summary: TaskRunSummary, query: EpisodicQuery) -> float:
-        score = 0.0
-        if query.user_goal_keywords:
-            goal_tokens = set(summary.goal.lower().split())
-            query_tokens = set(k.lower() for k in query.user_goal_keywords)
-            overlap = len(goal_tokens & query_tokens)
-            union = len(goal_tokens | query_tokens)
-            score += (overlap / union) if union > 0 else 0.0
-
-        if query.has_recovery is True and summary.has_recovery:
-            score += 0.5
-
-        if query.skill_name and summary.skill_name == query.skill_name:
-            score += 0.2
-
-        if query.verification_status and summary.verification_status == query.verification_status:
-            score += 0.2
-
-        return score
-
-    def search_task_runs(self, query: EpisodicQuery) -> List[TaskRunSummary]:
-        summaries = self.backend.list_summaries(project_scope_id=query.project_scope_id)
-        filtered: List[TaskRunSummary] = []
-        for s in summaries:
-            if query.skill_name and s.skill_name != query.skill_name:
-                continue
-            if query.skill_version and s.skill_version != query.skill_version:
-                continue
-            if query.verification_status and s.verification_status != query.verification_status:
-                continue
-            if query.has_recovery is not None and s.has_recovery != query.has_recovery:
-                continue
-            filtered.append(s)
-
-        scored = [(s, self._compute_relevance_score(s, query)) for s in filtered]
-        scored.sort(key=lambda x: (x[1], x[0].has_recovery, x[0].timestamp), reverse=True)
-
-        unique_results: List[TaskRunSummary] = []
-        seen_route_signatures = set()
-
-        for s, score in scored:
-            route_sig = f"{s.skill_name}:{s.skill_version}:{s.has_recovery}:{s.verification_status.value}"
-            if s.has_recovery:
-                unique_results.append(s)
-            elif route_sig not in seen_route_signatures:
-                seen_route_signatures.add(route_sig)
-                unique_results.append(s)
-
-            if len(unique_results) >= query.limit:
-                break
-
-        return unique_results
-
-    def get_progressive_evidence_subset(
+    def search_task_runs(
         self,
-        task_run_id: str,
-        operation_id: Optional[str] = None,
-    ) -> Optional[RetrievedEvidenceSubset]:
-        task_run = self.backend.get_task_run(task_run_id)
-        if not task_run:
-            return None
+        query: EpisodicSearchQuery,
+        project_scope: Optional[str] = None,
+        deduplicate_routes: bool = True,
+    ) -> List[TaskRunSummary]:
+        """Search task execution runs matching the query, strictly enforcing project scope isolation
+        and deduplicating identical routine execution routes when requested."""
+        runs = self._backend.search_runs(query, project_scope=project_scope)
+        if not deduplicate_routes:
+            return runs
 
-        relevant_ops = []
-        recovery_ev = None
-        events = getattr(task_run, "evidence_events", getattr(task_run, "evidence_records", []))
-        for ev in events:
-            ev_is_err = getattr(ev, "is_error", False) or getattr(ev, "event_type", None) == "SUBAGENT_RESULT"
-            ev_is_rec = getattr(ev, "is_recovery", False) or getattr(ev, "event_type", None) == "SUBAGENT_RESULT"
-            op_id = getattr(ev, "operation_id", None)
-            att_id = getattr(ev, "attempt_id", 1)
-            t_name = getattr(ev, "tool_name", "unknown")
-            diff_sum = getattr(ev, "diff_summary", None)
-            ev_id = getattr(ev, "id", getattr(ev, "evidence_id", "unknown"))
+        # Route deduplication: key by skill_name + skill_version + had_recovery + verification_status
+        deduped: List[TaskRunSummary] = []
+        seen_routes = set()
 
-            if operation_id is None or op_id == operation_id:
-                relevant_ops.append({
-                    "evidence_id": ev_id,
-                    "tool_name": t_name,
-                    "operation_id": op_id,
-                    "attempt_id": att_id,
-                    "is_error": ev_is_err,
-                    "is_recovery": ev_is_rec,
-                    "diff_summary": diff_sum,
-                })
-            if ev_is_rec and recovery_ev is None:
-                recovery_ev = {
-                    "evidence_id": ev_id,
-                    "tool_name": t_name,
-                    "operation_id": op_id,
-                    "params": getattr(ev, "params", getattr(ev, "metadata", {})),
-                    "diff_summary": diff_sum,
-                }
+        for run in runs:
+            # If run has an active error recovery or failure, always preserve it as a distinct episode
+            if run.had_recovery or run.verification_status != "VERIFIED":
+                deduped.append(run)
+                continue
 
-        has_rec = any(getattr(e, "is_recovery", False) for e in events)
-        summary_text = (
-            f"TaskRun {task_run.id}: goal='{task_run.goal}', status={task_run.verification_status.value}, "
-            f"recovery={has_rec}"
-        )
+            route_sig = f"{run.skill_name}:{run.skill_version}:{run.had_recovery}:{run.verification_status}"
+            if route_sig not in seen_routes:
+                seen_routes.add(route_sig)
+                deduped.append(run)
 
-        return RetrievedEvidenceSubset(
-            task_run_id=task_run.id,
-            goal=task_run.goal,
-            verification_status=task_run.verification_status,
-            had_recovery=has_rec,
-            relevant_operations=relevant_ops,
-            recovery_evidence=recovery_ev,
-            summary_text=summary_text,
-        )
+        return deduped
+
+    def get_run_detail(self, task_id: str) -> Optional[TaskRunDetail]:
+        """Retrieve full details of a specific task run for progressive disclosure."""
+        return self._backend.get_run_detail(task_id)
+
+    def extract_evidence_subset(self, detail: TaskRunDetail, max_events: int = 5) -> List[dict]:
+        """Extract a compact subset of events for low-overhead context injection."""
+        if not detail or not detail.evidence_events:
+            return []
+        # Return most relevant events (errors, mutations, recovery attempts)
+        salient = [
+            e for e in detail.evidence_events
+            if e.get("type") in ("error", "mutation", "recovery_attempt", "verification_failure")
+        ]
+        if not salient:
+            salient = detail.evidence_events[:max_events]
+        return salient[:max_events]

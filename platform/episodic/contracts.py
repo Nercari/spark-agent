@@ -1,56 +1,68 @@
-"""Contracts for progressive episodic retrieval and evidence queries."""
+from __future__ import annotations
+from dataclasses import dataclass, field
+from typing import List, Optional, Dict, Any
 
-from dataclasses import dataclass, field, asdict
-from enum import Enum
-from typing import Any, Dict, List, Optional
-from platform.learning.contracts import VerificationStatus
-
+@dataclass
+class EpisodicSearchQuery:
+    skill_name: Optional[str] = None
+    goal_substring: Optional[str] = None
+    verification_status: Optional[str] = None
+    requires_recovery: Optional[bool] = None
+    project_scope: Optional[str] = None
+    limit: Optional[int] = None
 
 @dataclass
 class TaskRunSummary:
-    task_run_id: str
-    project_scope_id: Optional[str]
+    task_id: str
+    goal: str
     skill_name: str
     skill_version: str
+    verification_status: str
+    had_recovery: bool
+    timestamp: float
+    project_scope: Optional[str] = None
+
+@dataclass
+class TaskRunDetail:
+    task_id: str
     goal: str
-    verification_status: VerificationStatus
-    has_recovery: bool
-    timestamp: str
-    summary_text: str = ""
+    skill_name: str
+    skill_version: str
+    verification_status: str
+    had_recovery: bool
+    timestamp: float
+    project_scope: Optional[str] = None
+    evidence_events: List[Dict[str, Any]] = field(default_factory=list)
+    recovery_attempts: List[Dict[str, Any]] = field(default_factory=list)
+    error_traces: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
-        d = asdict(self)
-        d["verification_status"] = self.verification_status.value
-        return d
+        return {
+            "task_id": self.task_id,
+            "goal": self.goal,
+            "skill_name": self.skill_name,
+            "skill_version": self.skill_version,
+            "verification_status": self.verification_status,
+            "had_recovery": self.had_recovery,
+            "timestamp": self.timestamp,
+            "project_scope": self.project_scope,
+            "evidence_events": self.evidence_events,
+            "recovery_attempts": self.recovery_attempts,
+            "error_traces": self.error_traces,
+        }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "TaskRunSummary":
-        d = data.copy()
-        d["verification_status"] = VerificationStatus(d["verification_status"])
-        return cls(**d)
-
-
-@dataclass
-class EpisodicQuery:
-    """Structured search parameters for querying episodic task history."""
-    project_scope_id: Optional[str] = None
-    skill_name: Optional[str] = None
-    skill_version: Optional[str] = None
-    verification_status: Optional[VerificationStatus] = None
-    has_recovery: Optional[bool] = None
-    tool_name_used: Optional[str] = None
-    operation_id: Optional[str] = None
-    limit: int = 10
-    user_goal_keywords: List[str] = field(default_factory=list)
-
-
-@dataclass
-class RetrievedEvidenceSubset:
-    """Bounded, progressive evidence subset extracted from a TaskRun without loading full payload dumps."""
-    task_run_id: str
-    goal: str
-    verification_status: VerificationStatus
-    had_recovery: bool
-    relevant_operations: List[dict] = field(default_factory=list)
-    recovery_evidence: Optional[dict] = None
-    summary_text: str = ""
+    def from_dict(cls, data: Dict[str, Any]) -> TaskRunDetail:
+        return cls(
+            task_id=data["task_id"],
+            goal=data["goal"],
+            skill_name=data["skill_name"],
+            skill_version=data["skill_version"],
+            verification_status=data.get("verification_status", "UNKNOWN"),
+            had_recovery=data.get("had_recovery", False),
+            timestamp=data.get("timestamp", 0.0),
+            project_scope=data.get("project_scope"),
+            evidence_events=data.get("evidence_events", []),
+            recovery_attempts=data.get("recovery_attempts", []),
+            error_traces=data.get("error_traces", []),
+        )

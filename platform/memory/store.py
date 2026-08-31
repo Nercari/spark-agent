@@ -1,93 +1,57 @@
-"""Declarative Memory Store managing atomic updates, conflict resolution, and record lifecycles."""
-
+from __future__ import annotations
+import os
+import json
 import uuid
-from datetime import datetime, timezone
-from typing import Optional, List, Dict, Any, Tuple
-from platform.memory.contracts import MemoryRecord, MemoryScope, MemoryKind, MemoryStatus
-from platform.memory.backend import MemoryBackend, DurableSparkMemoryBackend
-
+import time
+from typing import List, Optional, Dict
+from platform.memory.contracts import (
+    DeclarativeMemoryRecord,
+    MemoryStatus,
+    MemoryScope,
+    MemorySource,
+)
+from platform.memory.backend import LocalFilesystemMemoryBackend
 
 class MemoryStore:
-    """Service layer managing declarative memories with atomic CAS mutation, untrusted origin gating, and touch_used persistence."""
+    """Store managing declarative memory records with atomic CAS, supersession,
+    and staleness/utility touch tracking."""
 
-    def __init__(self, backend: Optional[MemoryBackend] = None):
-        self.backend = backend or DurableSparkMemoryBackend()
+    def __init__(self, backend: Optional[LocalFilesystemMemoryBackend] = None):
+        self.backend = backend or LocalFilesystemMemoryBackend()
 
-    def get_memory(self, memory_id: str) -> Optional[MemoryRecord]:
-        return self.backend.get_memory(memory_id)
+    def save(self, record: DeclarativeMemoryRecord) -> DeclarativeMemoryRecord:
+        """Save a new declarative record."""
+        return self.backend.save(record)
 
-    def get_active_memory(self, scope: MemoryScope, scope_id: str, key: str) -> Optional[MemoryRecord]:
-        return self.backend.get_active_memory(scope, scope_id, key)
+    def get(self, memory_id: str) -> Optional[DeclarativeMemoryRecord]:
+        """Get record by ID."""
+        return self.backend.get(memory_id)
 
-    def retrieve_memories(
+    def list_active(
         self,
-        scope: Optional[MemoryScope] = None,
-        scope_id: Optional[str] = None,
-        kind: Optional[MemoryKind] = None,
-        status: Optional[MemoryStatus] = None,
-        key: Optional[str] = None,
-    ) -> List[MemoryRecord]:
-        return self.backend.retrieve_memories(scope, scope_id, kind, status, key)
+        project_scope: Optional[str] = None,
+        user_id: Optional[str] = None,
+    ) -> List[DeclarativeMemoryRecord]:
+        """List active memories filtered by project or user scope."""
+        return self.backend.list_active(project_scope=project_scope, user_id=user_id)
 
-    def create_or_update_memory(
+    def touch_memory_used(self, memory_id: str) -> bool:
+        """EXP-05: Record usage of memory to update utility metrics and last_used_at."""
+        return self.backend.touch_memory_used(memory_id)
+
+    def supersede(
         self,
-        scope: MemoryScope,
-        scope_id: str,
-        kind: MemoryKind,
-        key: str,
-        value: Any,
-        evidence_ids: Optional[List[str]] = None,
-        is_trusted_user_origin: bool = True,
-        metadata: Optional[Dict[str, Any]] = None,
-        expected_active_revision: Optional[int] = None,
-    ) -> Tuple[bool, str, Optional[MemoryRecord]]:
-        active_rec = self.backend.get_active_memory(scope, scope_id, key)
-
-        if not is_trusted_user_origin:
-            if active_rec is None:
-                return False, f"Untrusted origin cannot create new standing memory `{key}`.", None
-
-            # Untrusted origin contradicting existing active memory -> log conflict
-            cur_meta = dict(active_rec.metadata)
-            conflicts = cur_meta.get("candidate_conflicts", [])
-            conflicts.append({
-                "proposed_value": value,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "trusted": False,
-            })
-            cur_meta["candidate_conflicts"] = conflicts
-            self.backend.update_metadata(active_rec.id, cur_meta)
-            return False, f"Untrusted candidate contradiction logged for `{key}` without mutating value.", active_rec
-
-        now_iso = datetime.now(timezone.utc).isoformat()
-        new_rec = MemoryRecord(
-            id=f"mem_{uuid.uuid4().hex[:12]}",
-            scope=scope,
-            scope_id=scope_id,
-            kind=kind,
-            key=key,
-            value=value,
-            provenance_evidence_ids=evidence_ids or [],
-            created_at=active_rec.created_at if active_rec else now_iso,
-            last_confirmed_at=now_iso,
-            status=MemoryStatus.ACTIVE,
-            metadata=metadata or {},
+        old_memory_id: str,
+        new_content: str,
+        authoritative: bool = True,
+    ) -> Optional[DeclarativeMemoryRecord]:
+        """Supersede an existing memory record atomically using CAS."""
+        return self.backend.supersede(
+            old_memory_id=old_memory_id,
+            new_content=new_content,
+            authoritative=authoritative,
         )
 
-        expected_rev = active_rec.metadata.get("revision", 1) if active_rec else None
-        if expected_active_revision is not None:
-            expected_rev = expected_active_revision
-
-        return self.backend.atomic_create_or_supersede(new_rec, expected_active_revision=expected_rev)
-
-    def touch_memory_used(self, memory_id: str):
-        self.backend.touch_memory_used(memory_id)
-
-    def mark_memory_stale(self, memory_id: str) -> bool:
-        rec = self.backend.get_memory(memory_id)
-        if not rec:
-            return False
-        meta = dict(rec.metadata)
-        meta["revalidation_needed"] = True
-        self.backend.update_metadata(memory_id, meta)
-        return True
+    def mark_revalidation_needed(self, memory_id: str, reason: str) -> bool:
+        """Mark a record as needing revalidation due to contradiction."""
+        return self.backend.mark_revalidation_needed(memory_id, reason)

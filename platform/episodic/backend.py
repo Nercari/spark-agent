@@ -1,82 +1,107 @@
-"""Episodic Memory Filesystem Backend implementation."""
-
+from __future__ import annotations
 import json
 import os
-import threading
-from typing import Dict, List, Optional
-from platform.learning.contracts import TaskRun, VerificationStatus, generate_sha256
-from platform.episodic.contracts import EpisodicQuery, TaskRunSummary
+from abc import ABC, abstractmethod
+from typing import List, Optional
+from platform.episodic.contracts import (
+    EpisodicSearchQuery,
+    TaskRunSummary,
+    TaskRunDetail,
+)
+
+class EpisodicBackend(ABC):
+    """Abstract interface for episodic evidence storage and search."""
+
+    @abstractmethod
+    def search_runs(
+        self,
+        query: EpisodicSearchQuery,
+        project_scope: Optional[str] = None,
+    ) -> List[TaskRunSummary]:
+        pass
+
+    @abstractmethod
+    def get_run_detail(self, task_id: str) -> Optional[TaskRunDetail]:
+        pass
+
+    @abstractmethod
+    def record_run(self, detail: TaskRunDetail) -> None:
+        pass
 
 
-class LocalFilesystemEpisodicBackend:
-    """Thread-safe filesystem-based storage for TaskRuns, progressive evidence, and lightweight summaries."""
+class LocalFilesystemEpisodicBackend(EpisodicBackend):
+    """Filesystem-backed implementation of EpisodicBackend."""
 
-    def __init__(self, base_dir: Optional[str] = None):
-        self.base_dir = base_dir or os.path.expanduser("~/.spark/episodic_evidence")
-        self.summaries_dir = os.path.join(self.base_dir, "summaries")
-        self.task_runs_dir = os.path.join(self.base_dir, "task_runs")
-        self._lock = threading.Lock()
-        os.makedirs(self.summaries_dir, exist_ok=True)
-        os.makedirs(self.task_runs_dir, exist_ok=True)
+    def __init__(self, base_dir: str = ".learning/evidence"):
+        self.base_dir = base_dir
+        os.makedirs(self.base_dir, exist_ok=True)
 
-    def save_task_run(self, task_run: TaskRun) -> str:
-        """Saves a complete TaskRun and generates its lightweight summary."""
-        with self._lock:
-            task_run_path = os.path.join(self.task_runs_dir, f"{task_run.id}.json")
-            with open(task_run_path, "w", encoding="utf-8") as f:
-                json.dump(task_run.to_dict(), f, indent=2)
+    def record_run(self, detail: TaskRunDetail) -> None:
+        file_path = os.path.join(self.base_dir, f"{detail.task_id}.json")
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(detail.to_dict(), f, indent=2)
 
-            has_rec = any(getattr(e, "is_recovery", False) or getattr(e, "event_type", None) == "SUBAGENT_RESULT" for e in getattr(task_run, "evidence_records", getattr(task_run, "evidence_events", [])))
-            summary = TaskRunSummary(
-                task_run_id=task_run.id,
-                project_scope_id=task_run.project_scope_id,
-                skill_name=task_run.skill_name,
-                skill_version=task_run.skill_version,
-                goal=task_run.goal,
-                verification_status=task_run.verification_status,
-                has_recovery=has_rec,
-                timestamp=task_run.completed_at or task_run.started_at,
-                summary_text=f"TaskRun {task_run.id}: goal='{task_run.goal}', status={task_run.verification_status.value}, recovery={has_rec}",
-            )
-            summary_path = os.path.join(self.summaries_dir, f"{task_run.id}.summary.json")
-            with open(summary_path, "w", encoding="utf-8") as f:
-                json.dump(summary.to_dict(), f, indent=2)
-
-            return task_run_path
-
-    def get_task_run(self, task_run_id: str) -> Optional[TaskRun]:
-        """Retrieves a full TaskRun by its ID."""
-        task_run_path = os.path.join(self.task_runs_dir, f"{task_run_id}.json")
-        if not os.path.exists(task_run_path):
+    def get_run_detail(self, task_id: str) -> Optional[TaskRunDetail]:
+        file_path = os.path.join(self.base_dir, f"{task_id}.json")
+        if not os.path.isfile(file_path):
             return None
-        with open(task_run_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return TaskRun.from_dict(data)
-
-    def get_summary(self, task_run_id: str) -> Optional[TaskRunSummary]:
-        """Retrieves a lightweight summary by TaskRun ID."""
-        summary_path = os.path.join(self.summaries_dir, f"{task_run_id}.summary.json")
-        if not os.path.exists(summary_path):
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return TaskRunDetail.from_dict(data)
+        except Exception:
             return None
-        with open(summary_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return TaskRunSummary.from_dict(data)
 
-    def list_summaries(self, project_scope_id: Optional[str] = None) -> List[TaskRunSummary]:
-        """Lists lightweight summaries across storage, optionally filtered by project scope."""
+    def search_runs(
+        self,
+        query: EpisodicSearchQuery,
+        project_scope: Optional[str] = None,
+    ) -> List[TaskRunSummary]:
         results: List[TaskRunSummary] = []
-        if not os.path.exists(self.summaries_dir):
+        if not os.path.isdir(self.base_dir):
             return results
 
-        for filename in sorted(os.listdir(self.summaries_dir)):
-            if filename.endswith(".summary.json"):
-                summary_path = os.path.join(self.summaries_dir, filename)
-                try:
-                    with open(summary_path, "r", encoding="utf-8") as f:
-                        data = json.load(f)
-                        summary = TaskRunSummary.from_dict(data)
-                        if project_scope_id is None or summary.project_scope_id == project_scope_id:
-                            results.append(summary)
-                except Exception:
+        for filename in os.listdir(self.base_dir):
+            if not filename.endswith(".json"):
+                continue
+            path = os.path.join(self.base_dir, filename)
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                detail = TaskRunDetail.from_dict(data)
+
+                # Project scope isolation
+                if project_scope is not None and detail.project_scope != project_scope:
                     continue
+                if query.project_scope is not None and detail.project_scope != query.project_scope:
+                    continue
+
+                # Query filtering
+                if query.skill_name and detail.skill_name != query.skill_name:
+                    continue
+                if query.goal_substring and query.goal_substring.lower() not in detail.goal.lower():
+                    continue
+                if query.verification_status and detail.verification_status != query.verification_status:
+                    continue
+                if query.requires_recovery is not None and detail.had_recovery != query.requires_recovery:
+                    continue
+
+                summary = TaskRunSummary(
+                    task_id=detail.task_id,
+                    goal=detail.goal,
+                    skill_name=detail.skill_name,
+                    skill_version=detail.skill_version,
+                    verification_status=detail.verification_status,
+                    had_recovery=detail.had_recovery,
+                    timestamp=detail.timestamp,
+                    project_scope=detail.project_scope,
+                )
+                results.append(summary)
+            except Exception:
+                continue
+
+        # Sort newest first
+        results.sort(key=lambda s: s.timestamp or 0, reverse=True)
+        if query.limit:
+            results = results[:query.limit]
         return results

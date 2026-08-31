@@ -1,19 +1,19 @@
-"""Identity resolution runtime adapter with zero personal email dependencies."""
+from __future__ import annotations
+import re
+from typing import Dict
 
-import os
-import hashlib
-from typing import Optional
+class MemoryIdentityAdapter:
+    """Privacy-preserving identity adapter that sanitizes PII/user tokens from memory."""
 
+    def __init__(self):
+        self.redaction_patterns = [
+            (re.compile(r"api[_-]?key[=:\s]+[A-Za-z0-9_\-]+", re.IGNORECASE), "api_key=[REDACTED]"),
+            (re.compile(r"bearer\s+[A-Za-z0-9_\-\.]+", re.IGNORECASE), "Bearer [REDACTED]"),
+            (re.compile(r"password[=:\s]+[^\s]+", re.IGNORECASE), "password=[REDACTED]"),
+        ]
 
-def resolve_runtime_user_id(explicit_user_id: Optional[str] = None) -> str:
-    """Resolves opaque user identity for declarative scoping without baking personal emails into code."""
-    if explicit_user_id and explicit_user_id.strip():
-        return explicit_user_id.strip()
-
-    # Fall back to environment variable or stable system hash
-    env_user = os.environ.get("SPARK_USER_ID") or os.environ.get("USER") or os.environ.get("USERNAME")
-    if env_user:
-        # Return hashed stable identifier to ensure privacy and cross-environment stability
-        return f"usr_{hashlib.sha256(env_user.encode('utf-8')).hexdigest()[:12]}"
-
-    return "usr_default_spark"
+    def sanitize(self, text: str) -> str:
+        sanitized = text
+        for pattern, replacement in self.redaction_patterns:
+            sanitized = pattern.sub(replacement, sanitized)
+        return sanitized

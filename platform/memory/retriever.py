@@ -1,78 +1,64 @@
-"""Declarative Memory Retrieval Engine (EXP-04 Relevance Scoring & EXP-05 Staleness Penalties)."""
-
+from __future__ import annotations
+import time
 from typing import List, Optional
-from platform.memory.contracts import MemoryRecord, MemoryScope, MemoryKind, MemoryStatus
+from platform.memory.contracts import DeclarativeMemoryRecord, MemoryStatus
 from platform.memory.store import MemoryStore
 
-
 class MemoryRetriever:
-    """Retrieves active declarative memories prioritized by task-goal relevance, recency, and utility."""
+    """Retrieves declarative memory records based on semantic overlap, project scope,
+    staleness decay, and utility tracking."""
 
-    def __init__(self, memory_store: MemoryStore):
-        self.memory_store = memory_store
+    def __init__(self, store: MemoryStore):
+        self.store = store
 
-    def _compute_relevance_score(self, record: MemoryRecord, task_goal: Optional[str] = None) -> float:
-        score = 0.0
-
-        # Universal conventions and preferences have high base utility
-        if record.kind in [MemoryKind.CONVENTION, MemoryKind.PREFERENCE]:
-            score += 1.0
-        elif record.kind in [MemoryKind.ENVIRONMENT, MemoryKind.FACT]:
-            score += 0.5
-
-        # Goal token match boost
-        if task_goal:
-            goal_tokens = set(task_goal.lower().split())
-            key_tokens = set(record.key.lower().replace("_", " ").split())
-            val_tokens = set(str(record.value).lower().replace("_", " ").split())
-            if (key_tokens | val_tokens) & goal_tokens:
-                score += 0.8
-
-        # Recency utility boost
-        if record.last_used_at:
-            score += 0.2
-
-        # Staleness & conflict penalties (EXP-05)
-        conflicts = record.metadata.get("candidate_conflicts", [])
-        if conflicts:
-            score -= (len(conflicts) * 0.1)
-
-        if record.status == MemoryStatus.STALE or record.metadata.get("revalidation_needed"):
-            score -= 0.4
-
-        return score
-
-    def retrieve_task_context_memories(
+    def retrieve(
         self,
-        project_scope_id: Optional[str] = None,
-        user_scope_id: Optional[str] = None,
-        task_goal: Optional[str] = None,
-        max_budget: int = 20,
-        allow_synthetic_user_fallback: bool = False,
-    ) -> List[MemoryRecord]:
-        candidates: List[MemoryRecord] = []
+        query: str,
+        project_scope: Optional[str] = None,
+        user_id: Optional[str] = None,
+        limit: int = 5,
+    ) -> List[DeclarativeMemoryRecord]:
+        candidates = self.store.list_active(project_scope=project_scope, user_id=user_id)
+        if not candidates:
+            return []
 
-        if project_scope_id:
-            candidates.extend(self.memory_store.retrieve_memories(
-                scope=MemoryScope.PROJECT,
-                scope_id=project_scope_id,
-                status=MemoryStatus.ACTIVE,
-            ))
+        query_tokens = set(query.lower().split())
+        scored: List[tuple[float, DeclarativeMemoryRecord]] = []
 
-        if user_scope_id:
-            candidates.extend(self.memory_store.retrieve_memories(
-                scope=MemoryScope.USER,
-                scope_id=user_scope_id,
-                status=MemoryStatus.ACTIVE,
-            ))
-        elif allow_synthetic_user_fallback:
-            candidates.extend(self.memory_store.retrieve_memories(
-                scope=MemoryScope.USER,
-                scope_id="usr_synthetic",
-                status=MemoryStatus.ACTIVE,
-            ))
+        for record in candidates:
+            score = self._compute_relevance_score(record, query_tokens)
+            if score > 0:
+                scored.append((score, record))
 
-        scored = [(m, self._compute_relevance_score(m, task_goal)) for m in candidates]
-        scored.sort(key=lambda x: (x[1], x[0].created_at), reverse=True)
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [record for _, record in scored[:limit]]
 
-        return [x[0] for x in scored[:max_budget]]
+    def _compute_relevance_score(
+        self,
+        record: DeclarativeMemoryRecord,
+        query_tokens: set[str],
+    ) -> float:
+        content_tokens = set(record.content.lower().split())
+        overlap = len(query_tokens.intersection(content_tokens))
+        if not overlap:
+            return 0.0
+
+        base_score = float(overlap)
+
+        # Utility boost for frequently used memories (EXP-05)
+        if record.use_count > 0:
+            base_score += min(0.5, record.use_count * 0.1)
+
+        # Recency / last used boost
+        if record.last_used_at:
+            recency = time.time() - record.last_used_at
+            if recency < 3600:
+                base_score += 0.2
+
+        # Staleness penalty if flagged or conflict history exists
+        if record.status == MemoryStatus.REVALIDATION_NEEDED or record.status == MemoryStatus.STALE:
+            base_score -= 0.4
+        if record.conflict_history:
+            base_score -= 0.1 * len(record.conflict_history)
+
+        return max(0.0, base_score)
