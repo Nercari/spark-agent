@@ -1,19 +1,17 @@
 {
-  "id": "task_9c2ebe82",
-  "goal": "Process telemetry metrics stream",
-  "started_at": "2026-08-25T10:00:00Z",
-  "completed_at": "2026-08-25T10:00:05Z",
-  "user_scope_id": "usr_default",
-  "project_scope_id": "proj_default",
+  "task_run_id": "task_9c2ebe82",
+  "project_scope_id": "default_project",
   "skill_name": "user:structured-formatter",
   "skill_version": "v1",
-  "evidence_events": [
+  "goal": "format server telemetry and system uptime data into a markdown table with headers Server, Status, and Uptime",
+  "verification_status": "VERIFIED_SUCCESS",
+  "events": [
     {
-      "id": "ev_1",
-      "timestamp": "2026-08-25T10:00:01Z",
+      "id": "ev_01",
+      "timestamp": "2026-08-25T11:00:00Z",
       "event_type": "TOOL_RESULT",
       "trust_class": "INTERNAL_EXECUTION",
-      "content": "{\"tool\": \"formatter\", \"params\": {\"format\": \"json\"}, \"result\": {\"status\": \"ok\"}}",
+      "content": "{\"tool\": \"structured-formatter\", \"params\": {\"input\": \"srv1,OK,99.9%\\nsrv2,OK,99.8%\", \"format\": \"markdown\"}, \"result\": \"| Server | Status | Uptime |\\n| --- | --- | --- |\\n| srv1 | OK | 99.9% |\\n| srv2 | OK | 99.8% |\"}",
       "payload_origin": "MCP",
       "operation_id": "op_format",
       "attempt_id": 1,
@@ -22,10 +20,5 @@
         "is_recovery": false
       }
     }
-  ],
-  "final_output": "{\"status\": \"ok\"}",
-  "verification_status": "VERIFIED_SUCCESS",
-  "verification_details": {
-    "reason": "Execution verified"
-  }
+  ]
 }

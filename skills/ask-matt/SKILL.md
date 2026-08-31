@@ -2,14 +2,15 @@
 name: ask-matt
 description: Ask which engineering skill or workflow fits your situation. A router over engineering skills to find the right tool or practice for code work.
 ---
+
 # Ask Matt
 
-Use this skill as an advisory router to identify which engineering practice, workflow, or skill best suits a code-related situation.
+Route engineering tasks to the right practice or skill.
 
 ## When to Use
-- When uncertain which engineering skill applies to a development task
-- Routing complex software engineering workflows
+- When deciding how to approach a codebase refactor, test strategy, or domain modeling.
+- When unsure which engineering skill applies to a specific implementation task.
 
 ## When NOT to Use
-- When the specific engineering task is already unambiguous (e.g. direct bug fix, writing tests)
-- Non-software engineering tasks
+- For direct code execution without routing.
+- For non-engineering tasks (e.g. data curation, declarative memory queries).

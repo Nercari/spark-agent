@@ -1,21 +1,19 @@
 {
-  "id": "task_fa3d4176",
-  "goal": "Format status artifact with recovery",
-  "started_at": "2026-08-25T10:05:00Z",
-  "completed_at": "2026-08-25T10:05:10Z",
-  "user_scope_id": "usr_default",
-  "project_scope_id": "proj_default",
+  "task_run_id": "task_fa3d4176",
+  "project_scope_id": "default_project",
   "skill_name": "user:structured-formatter",
   "skill_version": "v1",
-  "evidence_events": [
+  "goal": "format incoming server telemetry string into JSON output with fields server_id, status, and uptime_percent",
+  "verification_status": "VERIFIED_SUCCESS",
+  "events": [
     {
-      "id": "ev_err",
-      "timestamp": "2026-08-25T10:05:02Z",
+      "id": "ev_01",
+      "timestamp": "2026-08-25T11:05:00Z",
       "event_type": "TOOL_RESULT",
       "trust_class": "UNTRUSTED_EXTERNAL_EVIDENCE",
-      "content": "{\"tool\": \"formatter\", \"params\": {\"format\": \"xml\"}, \"result\": {\"error\": \"InvalidSchema\"}}",
+      "content": "{\"tool\": \"structured-formatter\", \"params\": {\"input\": \"srv3,DOWN,0.0%\", \"mode\": \"invalid_mode\"}, \"result\": \"Error: Invalid mode 'invalid_mode'\"}",
       "payload_origin": "MCP",
-      "operation_id": "op_fmt",
+      "operation_id": "op_format_json",
       "attempt_id": 1,
       "metadata": {
         "is_error": true,
@@ -23,23 +21,19 @@
       }
     },
     {
-      "id": "ev_rec",
-      "timestamp": "2026-08-25T10:05:05Z",
+      "id": "ev_02",
+      "timestamp": "2026-08-25T11:05:10Z",
       "event_type": "TOOL_RESULT",
       "trust_class": "INTERNAL_EXECUTION",
-      "content": "{\"tool\": \"formatter\", \"params\": {\"format\": \"compact_json\"}, \"result\": {\"status\": \"ok\"}}",
+      "content": "{\"tool\": \"structured-formatter\", \"params\": {\"input\": \"srv3,DOWN,0.0%\", \"mode\": \"json\", \"schema\": \"server_telemetry\"}, \"result\": \"{\\\"server_id\\\": \\\"srv3\\\", \\\"status\\\": \\\"DOWN\\\", \\\"uptime_percent\\\": 0.0}\"}",
       "payload_origin": "MCP",
-      "operation_id": "op_fmt",
+      "operation_id": "op_format_json",
       "attempt_id": 2,
       "metadata": {
         "is_error": false,
-        "is_recovery": true
+        "is_recovery": true,
+        "diff_summary": "supply mode='json' and schema='server_telemetry'"
       }
     }
-  ],
-  "final_output": "{\"status\": \"ok\"}",
-  "verification_status": "VERIFIED_SUCCESS",
-  "verification_details": {
-    "reason": "Recovery verified"
-  }
+  ]
 }

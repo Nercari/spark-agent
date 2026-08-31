@@ -1,18 +1,7 @@
 {
-  "skill_name": "user:ask-matt",
-  "display_name": "Ask Matt",
-  "description": "Router over engineering skills.",
+  "name": "user:ask-matt",
   "active_version_id": "v1",
   "versions": [
     "v1"
-  ],
-  "triggers": [
-    "which engineering skill to use",
-    "route engineering workflow",
-    "software engineering skill advisory"
-  ],
-  "negative_triggers": [
-    "implement feature directly",
-    "fix typo"
   ]
 }
