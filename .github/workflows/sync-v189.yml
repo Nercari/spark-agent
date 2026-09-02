@@ -1,0 +1,63 @@
+name: Sync audited v1.89 closure
+
+on:
+  push:
+    branches: [sync-v1.89-staging]
+    paths: [.github/workflows/sync-v189.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout staging trigger
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch and verify audited closure archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 --retry-delay 2 \
+            'https://drive.google.com/uc?export=download&id=1KG_1Buk6rjUQvlMfbToJY3VNKSn6Grus' \
+            -o /tmp/champion-source.zip
+          echo '74ce309c34b9298583f31cd5252c9c6464a0b25bfc88546f8bbe3eb8bf1c641f  /tmp/champion-source.zip' | sha256sum -c -
+          python - <<'PY'
+          import hashlib, zipfile
+          p='/tmp/champion-source.zip'
+          z=zipfile.ZipFile(p)
+          expected='e5c1dff7b051be1141bf67f83be8d05aabd96297'
+          assert z.comment.decode() == expected, (z.comment, expected)
+          ledger=z.read('ledger/experiments_ledger.json')
+          assert hashlib.sha256(ledger).hexdigest() == '129a83362cebe3a97f49ff580ceb73b0a2e9b1107cf81d6ebde336a6d4c9adcf'
+          z.extractall('/tmp/champion')
+          PY
+          find /tmp/champion -type f -exec chmod 0644 {} +
+          find /tmp/champion -type d -exec chmod 0755 {} +
+
+      - name: Publish exact audited tree to main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch origin main
+          git checkout -B main origin/main
+          git rm -r --ignore-unmatch .
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -a /tmp/champion/. .
+          git add -A -f
+          TREE=$(git write-tree)
+          test "$TREE" = '7a4e9500d5558b28ca51ba09f56a8eefb6c139b2'
+          git commit -m 'chore: sync audited v1.89.0 closure baseline'
+          git push origin HEAD:main
+          git fetch origin main
+          test "$(git rev-parse 'origin/main^{tree}')" = '7a4e9500d5558b28ca51ba09f56a8eefb6c139b2'
+
+      - name: Remove staging branch
+        if: success()
+        shell: bash
+        run: git push origin --delete sync-v1.89-staging || true
