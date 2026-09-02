@@ -21,9 +21,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl -fL --retry 3 --retry-delay 2 \
-            'https://drive.google.com/uc?export=download&id=1KG_1Buk6rjUQvlMfbToJY3VNKSn6Grus' \
-            -o /tmp/champion-source.zip
+          python -m pip install --quiet gdown
+          gdown 'https://drive.google.com/uc?id=1KG_1Buk6rjUQvlMfbToJY3VNKSn6Grus' -O /tmp/champion-source.zip
           echo '74ce309c34b9298583f31cd5252c9c6464a0b25bfc88546f8bbe3eb8bf1c641f  /tmp/champion-source.zip' | sha256sum -c -
           python - <<'PY'
           import hashlib, zipfile
